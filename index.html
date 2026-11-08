@@ -1078,6 +1078,15 @@ const Core = (() => {
     return {bmr: Math.round(bmr), tdee: Math.round(tdee), kcal, protein, fat, carbs, fibre: 30, weeklyLoss, floored};
   }
 
+  /* Daily calorie adjustment: maintenance assumes the step count of your activity level; real steps move it.
+     Walking costs roughly 0.5 kcal per kg per km (~0.04 kcal per step at 94 kg); standing work ~60 kcal/h. Capped at ±700. */
+  const BASE_STEPS = {1.4: 5000, 1.55: 10000, 1.65: 15000, 1.75: 20000};
+  function dayAdjust(profile, steps, standHours) {
+    const base = BASE_STEPS[profile.activity] || 15000; const perStep = 0.0425 * (profile.weight || 94) / 100;
+    const walk = steps == null ? 0 : (steps - base) * perStep;
+    const adj = Math.max(-700, Math.min(700, walk + (standHours || 0) * 60));
+    return {kcal: Math.round(adj / 10) * 10, base, steps};
+  }
   /* ---------- meal plan ---------- */
   function dayPlan(k, opts) {
     const {template, overrides, dietSched, RECIPES_BY_ID, ING, exclude} = opts;
@@ -1301,6 +1310,8 @@ const Core = (() => {
     const a = Object.assign({}, want); let total = Object.values(a).reduce((s, v) => s + v, 0);
     const order = ["coding","tech","outreach","apps","interview"];
     for (const k of order) { if (total <= avail) break; const cut = Math.min(a[k] - (mins[k] || 0), total - avail); if (cut > 0) { a[k] -= cut; total -= cut; } }
+    for (const k of order) { if (total <= avail) break; const cut = Math.min(a[k], total - avail); if (cut > 0) { a[k] -= cut; total -= cut; } } // very long workdays: below minimums, applications last
+    Object.keys(a).forEach(k => { if (a[k] > 0 && a[k] < 10) { a[k] = 0; } });
     return a;
   }
   function buildSchedule(k, s, day, training) {
@@ -1313,36 +1324,81 @@ const Core = (() => {
     const windDown = 30, review = 10;
     const bedEdge = bed <= wake ? bed + 1440 : bed;
     if (status === "work" || status === "busy") {
-      let t = b("ready", wake, 30, "Get up, wash and dress", "personal");
-      t = b("breakfast", t, 20, "Breakfast & pack lunch", "meal");
-      const leave = ws - com - 5;
-      if (status !== "busy" && leave - t >= 20) t = b("morning", t, Math.min(30, leave - t), CAREER_LABEL.morning, "career", {focus: true, ctype: "interview"});
-      b("commute1", ws - com, com, "Commute to work", "commute");
-      b("work", ws, we - ws, "Work (lunch break: eat your packed lunch)", "work");
-      t = b("commute2", we, com, "Commute home", "commute");
-      t = b("snack", t, 15, "Snack, water & change", "meal");
-      if (sess) {
-        const dur = sess.place === "gym" ? sess.minutes + 15 : sess.minutes;
-        t = b("train", t, dur, (sess.place === "gym" ? "Gym: " : "Home workout: ") + sess.name, "fitness");
-        t = b("shower", t, 20, "Shower & recover", "personal");
+      // jobs today (postie shift + optional second job); each has its own times and travel
+      const jobs = ((day && day.jobs && day.jobs.length) ? day.jobs : [{label: "Work", start: s.workStart || "09:00", end: s.workEnd || "15:30", commute: com, main: true}])
+        .map(j => Object.assign({}, j, {s0: toMin(j.start), e0: toMin(j.end), c: j.commute == null ? com : Number(j.commute)})).sort((a, b) => a.s0 - b.s0);
+      const first = jobs[0], last = jobs[jobs.length - 1];
+      // before-work training or an early shift: wake earlier AND go to bed earlier by the same amount, so sleep never shrinks
+      const morning = !!sess && s.trainTime === "morning";
+      const tdur = sess ? (sess.place === "gym" ? sess.minutes + 15 : sess.minutes) : 0;
+      const needBefore = (morning ? 10 + tdur + 20 : 30) + 20;                    // routine before leaving
+      const latestWake = first.s0 - first.c - 5 - needBefore;
+      const shift = Math.max(0, wake - latestWake);
+      const bedW = bedEdge - shift; const wakeW = wake - shift;
+      let t;
+      if (morning) {
+        t = b("ready", wakeW, 10, "Wake, water & a small snack (banana)", "personal");
+        t = b("train", t, tdur, (sess.place === "gym" ? "Gym: " : "Home workout: ") + sess.name, "fitness");
+        t = b("shower", t, 20, "Shower & get ready for work", "personal");
+        t = b("breakfast", t, 20, "Breakfast & pack lunch", "meal");
       } else {
-        t = b("walk", t, 15, "Foot, calf & hip stretches (recovery day — your round is your cardio)", "fitness");
+        t = b("ready", wakeW, 30, shift ? `Get up (${shift} min earlier for today's start)` : "Get up, wash and dress", "personal");
+        t = b("breakfast", t, 20, "Breakfast & pack lunch", "meal");
       }
-      if (prepDay) t = b("prep", t, s.prepMinutes || 75, "Batch cook & portion meals", "meal");
+      const leave = first.s0 - first.c - 5;
+      if (status !== "busy" && leave - t >= 20) t = b("morning", t, Math.min(30, leave - t), CAREER_LABEL.morning, "career", {focus: true, ctype: "interview"});
+      let trainedInGap = false;
+      jobs.forEach((j, i) => {
+        const named = j.label && j.label !== "Postie" && j.label !== "Work"; const name = named ? j.label : (j.main ? "work" : "second job");
+        if (i === 0) b("commute1", j.s0 - j.c, j.c, j.main ? "Commute to work" : "Travel to " + name, "commute");
+        else { const prev = jobs[i - 1]; const gap = j.s0 - prev.e0;
+          if (gap >= prev.c + j.c + 45) {
+            let g = b("commuteh" + i, prev.e0, prev.c, "Commute home", "commute"); const gEnd = j.s0 - j.c;
+            // use a long gap well: snack, then the workout (or applications), then dinner before leaving
+            const evening = g >= 15 * 60; const dinnerLen = evening ? 30 : 0;
+            if (gEnd - g >= 15 + dinnerLen + 30) { g = b("gapsnack" + i, g, 15, "Snack & water", "meal");
+              const sdur = sess && !morning ? (sess.place === "gym" ? sess.minutes + 15 : sess.minutes) : 0;
+              if (sdur && gEnd - g >= sdur + 20 + dinnerLen) { g = b("train", g, sdur, (sess.place === "gym" ? "Gym: " : "Home workout: ") + sess.name, "fitness"); g = b("shower", g, 20, "Shower", "personal"); trainedInGap = true; }
+              const left = gEnd - g - dinnerLen; if (left >= 20) g = b("apps", g, Math.min(90, left), CAREER_LABEL.apps, "career", {focus: true, ctype: "apps"});
+              if (dinnerLen) b("gapdinner" + i, gEnd - dinnerLen, dinnerLen, "Dinner before " + name, "meal");
+            } else b("gap" + i, g, gEnd - g, "Break: eat something, rest", "personal");
+            b("commutej" + i, gEnd, j.c, "Travel to " + name, "commute"); }
+          else if (gap > 0) b("travel" + i, prev.e0, gap, "Travel to " + name + " (eat a snack on the way)", "commute"); }
+        b(i === 0 ? "work" : "work" + (i + 1), j.s0, j.e0 - j.s0, (named ? j.label : (j.main ? "Work" : "Second job")) + (i === 0 && j.e0 - j.s0 >= 300 ? " (lunch break: eat your packed lunch)" : ""), "work");
+      });
+      let dinnerDone = blocks.some(x => /^gapdinner/.test(x.id));
+      blocks.forEach(x => { if (/^gap\d/.test(x.id) && toMin(x.start) >= 15 * 60 && x.mins >= 45) { x.title = "Dinner & rest before " + (jobs[jobs.length - 1].label || "second job"); x.cat = "meal"; dinnerDone = true; } });
+      const appsInGap = blocks.filter(x => x.id === "apps").reduce((s2, x) => s2 + x.mins, 0);
+      t = b("commute2", last.e0, last.c, "Commute home", "commute");
+      const limit = bedW - windDown;                                  // nothing optional may run into wind-down
+      const fits = d => t + d <= limit - 10;
+      if (fits(15)) t = b("snack", t, 15, dinnerDone ? "Wind down from work, water" : "Snack, water & change", "meal");
+      if (sess && (morning || trainedInGap)) {
+        if (fits(10)) t = b("walk", t, 10, morning ? "Foot, calf & hip stretches (trained this morning)" : "Foot, calf & hip stretches", "fitness");
+      } else if (sess) {
+        const dur = sess.place === "gym" ? sess.minutes + 15 : sess.minutes;
+        if (fits(dur + 20 + (dinnerDone ? 0 : 30))) { t = b("train", t, dur, (sess.place === "gym" ? "Gym: " : "Home workout: ") + sess.name, "fitness"); t = b("shower", t, 20, "Shower & recover", "personal"); }
+        else blocks.push({id: "trainskip", start: toTime(t), end: toTime(t), mins: 0, title: "Workout skipped — not enough time before bed tonight", cat: "fitness"});
+      } else {
+        const wd2 = day && day.lowSteps ? 30 : 15;
+        if (fits(wd2 + (dinnerDone ? 0 : 30))) t = day && day.lowSteps ? b("walk", t, 30, "Brisk 30-min walk (low-step day)", "fitness") : b("walk", t, 15, "Foot, calf & hip stretches (recovery day — your round is your cardio)", "fitness");
+      }
+      if (prepDay) { const pm = s.prepMinutes || 75; if (fits(pm + (dinnerDone ? 0 : 30))) t = b("prep", t, pm, "Batch cook & portion meals", "meal"); else blocks.push({id: "prepskip", start: toTime(t), end: toTime(t), mins: 0, title: "No time to batch cook today — use freezer portions and cook tomorrow", cat: "meal"}); }
       // evening career allocation
-      const dinner = 30, brk = 10;
-      const avail = (bedEdge - windDown - review) - t - dinner - brk;
-      const want = status === "busy" ? {apps: 45, tech: 20, outreach: 15, interview: 0, coding: 0} : {apps: 90, tech: 75, coding: 45, outreach: 30, interview: 0};
-      const al = allocate(Math.max(0, avail), want, status === "busy" ? {apps: 30, tech: 0, outreach: 10} : {apps: 45, tech: 45, outreach: 15});
-      t = b("apps", t, al.apps, CAREER_LABEL.apps, "career", {focus: true, ctype: "apps"});
+      const dinner = dinnerDone ? 0 : Math.min(30, Math.max(0, limit - t - 10)), brk = 10;
+      const rev = Math.min(review, Math.max(0, limit - t - dinner));
+      const avail = (limit - rev) - t - dinner - brk;
+      const want = status === "busy" ? {apps: Math.max(0, 45 - appsInGap), tech: 20, outreach: 15, interview: 0, coding: 0} : {apps: Math.max(0, 90 - appsInGap), tech: 75, coding: 45, outreach: 30, interview: 0};
+      const al = allocate(Math.max(0, avail), want, status === "busy" ? {apps: 0, tech: 0, outreach: 10} : {apps: appsInGap ? 0 : 45, tech: 45, outreach: 15});
+      t = b(appsInGap ? "apps2" : "apps", t, al.apps, CAREER_LABEL.apps, "career", {focus: true, ctype: "apps"});
       t = b("dinner", t, dinner, "Dinner", "meal");
       t = b("tech", t, al.tech, CAREER_LABEL.tech, "career", {focus: true, ctype: "tech"});
       if (al.coding > 0) { t = b("break", t, brk, "Short break, water, stretch", "personal"); t = b("coding", t, al.coding, CAREER_LABEL.coding, "career", {focus: true, ctype: "coding"}); }
       t = b("outreach", t, al.outreach, CAREER_LABEL.outreach, "career", {focus: true, ctype: "outreach"});
-      t = b("review", t, review, CAREER_LABEL.review, "career", {focus: true, ctype: "review"});
-      const free = (bedEdge - windDown) - t; if (free >= 10) t = b("free", t, free, "Free time", "personal");
-      b("winddown", bedEdge - windDown, windDown, "Wind-down: screens off, tomorrow's clothes, bed", "sleep");
-    } else if (status === "leave") {
+      t = b("review", t, rev, CAREER_LABEL.review, "career", {focus: true, ctype: "review"});
+      const free = limit - t; if (free >= 10) t = b("free", t, free, "Free time", "personal");
+      b("winddown", limit, windDown, morning ? "Wind-down and early bed (gym before work tomorrow)" : "Wind-down: screens off, tomorrow's clothes, bed", "sleep");
+    } else if (status === "leave" || status === "off") {
       let t = b("ready", wake, 30, "Get up, wash and dress", "personal");
       t = b("breakfast", t, 30, "Breakfast", "meal");
       t = b("apps", t, 90, CAREER_LABEL.apps, "career", {focus: true, ctype: "apps"});
@@ -1374,7 +1430,7 @@ const Core = (() => {
     return out.sort((a, b2) => toMin(a.start) - toMin(b2.start));
   }
   function conflicts(blocks) {
-    const res = []; const bs = blocks.map(x => ({x, s: toMin(x.start), e: toMin(x.end) < toMin(x.start) ? toMin(x.end) + 1440 : toMin(x.end)})).sort((a, b) => a.s - b.s);
+    const res = []; const bs = blocks.filter(x => x.mins > 0).map(x => ({x, s: toMin(x.start), e: toMin(x.end) < toMin(x.start) ? toMin(x.end) + 1440 : toMin(x.end)})).sort((a, b) => a.s - b.s);
     for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) { if (bs[j].s >= bs[i].e) break; res.push([bs[i].x.id, bs[j].x.id]); }
     return res;
   }
@@ -1545,7 +1601,7 @@ const Core = (() => {
 
   return {pad, key, parse, addDays, weekday, weekStart, daysBetween, DAY_NAMES, DAY_SHORT, toMin, toTime, round,
     DEFAULT_DIET, dietForDate, recipeDiet, recipeFlags, recipeAllowed, slotGroup, recipeNutrition, recipeCost, CARB_ING, unitPrice, computeTargets, ACTIVITY,
-    dayPlan, portionPlan, GOALS, weekDates, dayTotals, planViolations, shoppingList, cheapestPlan, budgetReport, prepSessions, prepMinutes,
+    dayPlan, portionPlan, GOALS, dayAdjust, BASE_STEPS, weekDates, dayTotals, planViolations, shoppingList, cheapestPlan, budgetReport, prepSessions, prepMinutes,
     buildSchedule, conflicts, sleepHours, careerMinutes, carryOver, CAREER_LABEL,
     weightSeries, weekAvg, weightTrend, e1rm, parseRange, nextTarget, jobQueue, jobStats, parseJD, recommendTrack, weeklyReview,
     validateBackup, mergeRecords, toCSV, RECORD_TYPES, CLOSED};
@@ -1612,12 +1668,12 @@ const DEFAULTS = () => ({
   settings: {
     profile: {name: "Sai Gopesh Rayudu", weight: 94, startWeight: 94, target: 75, height: 188, age: 23, sex: "male", location: "UK", activity: 1.65, goal: "standard", deficit: 0.2, deficitKcal: 800, proteinPerKg: 1.6,
       quals: "an MSc in Data Science (First Class Honours) and Microsoft DP-600, DP-700 and PL-300 certifications", qualsShort: "MSc Data Science, DP-600, DP-700, PL-300", links: ""},
-    schedule: {wake: "07:00", bed: "23:00", workStart: "09:00", workEnd: "15:30", commute: 30, prepWeekdays: [3, 6], prepMinutes: 90},
+    schedule: {wake: "07:00", bed: "23:00", workStart: "09:00", workEnd: "15:30", commute: 30, prepWeekdays: [3, 6], prepMinutes: 90, workdays: [true, true, true, true, true, true, true], trainTime: "evening"},
     targetsOverride: null,
     diet: {schedule: C.DEFAULT_DIET.slice(), allergies: "", allergiesConfirmed: false, exclude: DEFAULT_EXCLUDE.slice()},
     food: {budget: 50, supermarket: "", quickMode: false, animalOnNonveg: true},
     career: {startDate: "2026-11-02", primaryTrack: "auto", extraSkills: [], cvVersions: ["Master CV", "Analyst/BI CV", "Data/Analytics Engineer CV", "Data Scientist CV", "AI Engineer CV"], weekTargets: {}},
-    training: {experience: "Beginner–intermediate", increment: 2.5},
+    training: {experience: "Beginner–intermediate", increment: 2.5, startDate: null},
     theme: "auto"
   },
   pantry: Object.assign({}, DEFAULT_PANTRY), prices: {}, planTemplate: JSON.parse(JSON.stringify(DEFAULT_PLAN)), planOverrides: {},
@@ -1644,10 +1700,63 @@ function refreshCatalog() {
 function targets() { const s = settings(); const t = C.computeTargets(s.profile); return s.targetsOverride ? Object.assign({}, t, s.targetsOverride, {computed: t}) : Object.assign({}, t, {computed: t}); }
 function weekNo(k) { const d = C.daysBetween(settings().career.startDate, k); return Math.min(8, Math.max(1, Math.floor(d / 7) + 1)); }
 function weekTargets(n) { const w = WEEKS[n - 1]; return Object.assign({}, w.targets, (settings().career.weekTargets || {})[n] || {}); }
-function sessionFor(k) { const d = getDay(k); if (d.status === "unavailable" || d.trainSkip) return null; const w = S.rec.get("wk:" + k); if (w && w.forced && w.prog === "homeFB") return PROGRAMME[5]; return PROGRAMME[C.weekday(k)] || null; }
-function blocksFor(k) { return C.buildSchedule(k, settings().schedule, getDay(k), sessionFor(k)); }
+/* Status for a date: an explicit choice for that date wins, otherwise your weekly working pattern. */
+/* What work looks like on a date: postie shift (or not) + optional second job + steps. Date settings win, then the weekday default, then your usual pattern. */
+function dayWork(k) {
+  const d = getDay(k), sc = settings().schedule, prof = settings().profile, wd = C.weekday(k);
+  const tpl = (sc.dayTemplates || {})[wd] || {};
+  const shift = d.shift || tpl.shift || null; const job2 = d.job2 !== undefined ? d.job2 : (tpl.job2 || null);
+  const postieOn = shift ? !shift.off : !(sc.workdays && sc.workdays[wd] === false);
+  const jobs = [];
+  const pStart = (shift && shift.start) || sc.workStart, pEnd = (shift && shift.end) || sc.workEnd;
+  if (postieOn) jobs.push({label: "Postie", main: true, start: pStart, end: pEnd, commute: sc.commute});
+  if (job2 && job2.start && job2.end) jobs.push({label: job2.label || "Second job", main: !postieOn, start: job2.start, end: job2.end, commute: job2.commute == null ? 20 : Number(job2.commute), type: job2.type || "standing"});
+  const mins = j => Math.max(0, C.toMin(j.end) - C.toMin(j.start));
+  const workMin = jobs.reduce((s, j) => s + mins(j), 0);
+  const stdMin = Math.max(60, C.toMin(sc.workEnd) - C.toMin(sc.workStart));
+  const base = C.BASE_STEPS[prof.activity] || 15000;
+  const postieMin = postieOn ? mins(jobs[0]) : 0;
+  let steps, stepsSource;
+  if (d.checkin && d.checkin.steps != null) { steps = d.checkin.steps; stepsSource = "logged"; }
+  else if (d.expSteps != null) { steps = d.expSteps; stepsSource = "planned"; }
+  else if (tpl.expSteps != null) { steps = tpl.expSteps; stepsSource = "weekday default"; }
+  else { steps = Math.round((postieOn ? base * Math.min(1.6, Math.max(0.4, postieMin / stdMin)) : 6000) + (job2 && job2.type === "walking" ? mins(job2) / 60 * 2500 : 0)); steps = Math.round(steps / 500) * 500; stepsSource = "estimated from your hours"; }
+  const standHours = job2 && (job2.type || "standing") === "standing" && job2.start && job2.end ? mins(job2) / 60 : 0;
+  const lastEnd = jobs.length ? Math.max(...jobs.map(j => C.toMin(j.end))) : 0;
+  return {jobs, postieOn, job2, steps, stepsSource, standHours, workMin, lastEnd, trainMode: d.trainMode || "auto", tpl};
+}
+function dayStatus(k) { const d = getDay(k); if (d.status) return d.status; return dayWork(k).jobs.length ? "work" : "off"; }
+/* Short version of a session for long or very active days: main lifts first, max 2 sets, one ab exercise. */
+function shortSession(sess, note) {
+  const isAb = id => EXERCISES[id].cat === "Core and abs";
+  const ex = sess.ex.filter(e => !isAb(e[0])).slice(0, 4).map(e => [e[0], Math.min(2, e[1]), e[2], e[3]]).concat(sess.ex.filter(e => isAb(e[0])).slice(0, 1).map(e => [e[0], 2, e[2], e[3]]));
+  const minutes = Math.round((8 + ex.reduce((s, e) => s + e[1] * (45 + e[3]) / 60, 0)) / 5) * 5;
+  return Object.assign({}, sess, {ex, minutes, short: true, note, name: sess.name + " — short"});
+}
+function dayTargets(k) {
+  const t = targets(); const w = dayWork(k); const st = dayStatus(k);
+  const adj = st === "unavailable" ? {kcal: 0} : C.dayAdjust(settings().profile, w.steps, w.standHours);
+  return Object.assign({}, t, {kcal: t.kcal + adj.kcal, adj: adj.kcal, steps: w.steps, stepsSource: w.stepsSource});
+}
+const STATUS_LABEL = {work: "Workday", busy: "Busy (short plan)", off: "Day off", leave: "Leave / holiday", unavailable: "Unavailable"};
+function planStart() { return settings().training.startDate || settings().career.startDate || todayKey(); }
+function beforeStart(k) { return k < planStart(); }
+function baseSessionFor(k) { const d = getDay(k); if (dayStatus(k) === "unavailable" || d.trainSkip || beforeStart(k)) return null; const w = S.rec.get("wk:" + k); if (w && w.forced && w.prog === "homeFB") return PROGRAMME[5]; return PROGRAMME[C.weekday(k)] || null; }
+function sessionFor(k) {
+  let sess = baseSessionFor(k); if (!sess) return null;
+  const w = dayWork(k), mode = w.trainMode, morning = settings().schedule.trainTime === "morning";
+  if (mode === "skip") return null; if (mode === "full") return sess;
+  if (mode === "short") return shortSession(sess, "You chose the short version today");
+  if (dayStatus(k) === "work" || dayStatus(k) === "busy") {
+    if (w.workMin >= 540) return shortSession(sess, `Long day (${Math.floor(w.workMin / 60)}h ${w.workMin % 60}m working) — short session`);
+    if (!morning && w.lastEnd >= 18 * 60 + 30) return shortSession(sess, "Late finish — short session");
+  }
+  if (w.steps >= 22000 && sess.id === "lowerA") return shortSession(sess, `Very high steps (${fmt(w.steps)}) — lighter leg day`);
+  return sess;
+}
+function blocksFor(k) { const w = dayWork(k); return C.buildSchedule(k, settings().schedule, Object.assign({}, getDay(k), {status: dayStatus(k), jobs: w.jobs, lowSteps: w.steps < 9000 && !sessionFor(k)}), sessionFor(k)); }
 function planOpts() { const s = settings(); return {template: kv("planTemplate"), overrides: kv("planOverrides"), dietSched: s.diet.schedule, RECIPES_BY_ID: RBI, ING, exclude: s.diet.exclude}; }
-function dayPlanFor(k) { return C.portionPlan(C.dayPlan(k, planOpts()), RBI, ING, targets(), "proteinpot"); }
+function dayPlanFor(k) { return C.portionPlan(C.dayPlan(k, planOpts()), RBI, ING, dayTargets(k), "proteinpot"); }
 /* "≈ 2 chapatis · 45 g rice (dry)" guidance for the day's starch scaling */
 function starchNote(r, cf) {
   if (!r) return ""; const per = id => { const x = r.ing.find(([i]) => i === id); return x ? x[1] / r.portions * cf : 0; };
@@ -1892,7 +2001,7 @@ function todayDay(k) {
   if (s.schedule.prepWeekdays.includes(C.weekday(k)) && day.status !== "unavailable") notes.push(`<div class="note info">Batch-cooking day. <a href="#food" data-act="go" data-to="food" data-sub="prep">Open the meal-prep checklist</a></div>`);
   notes.push(...goalAlerts(k));
   const careerMin = C.careerMinutes(blocks);
-  const statusPills = [["work", "Workday"], ["busy", "Busy (short plan)"], ["leave", "Leave / holiday"], ["unavailable", "Unavailable"]].map(([v, l]) => `<button aria-pressed="${(day.status || "work") === v}" data-act="setStatus" data-date="${k}" data-v="${v}">${l}</button>`).join("");
+  const statusPills = ["work", "busy", "off", "leave", "unavailable"].map(v => `<button aria-pressed="${dayStatus(k) === v}" data-act="setStatus" data-date="${k}" data-v="${v}">${STATUS_LABEL[v]}</button>`).join("");
   const hero = focus ? `<div class="next"><div class="lbl">${cur && focus === cur ? "Now" : "Next"} · ${focus.start}–${focus.end}</div><div class="what">${esc(focus.title)}</div><div class="when">${esc(blockSubtitle(focus, k))}</div>
     <div class="row">${focus.cat !== "meal" ? `<button class="btn primary" data-act="timer" data-label="${esc(focus.title)}" data-min="${focus.mins}" data-block="${focus.id}" data-date="${k}">Start ${focus.mins}-min timer</button>` : ""}<button class="btn" data-act="toggleBlock" data-date="${k}" data-id="${focus.id}">Mark done</button></div></div>` : `<div class="next"><div class="what">Day complete</div><div class="when">Close the day to plan tomorrow.</div></div>`;
   const pri = day.priorities || defaultPriorities(k);
@@ -1907,7 +2016,7 @@ function todayDay(k) {
       <div class="acts">${(b.focus || b.cat === "fitness" || b.id === "prep") && !done ? `<button class="btn ghost small" data-act="timer" data-label="${esc(b.title)}" data-min="${b.mins}" data-block="${b.id}" data-date="${k}" aria-label="Start timer">⏱</button>` : ""}<button class="btn ghost small" data-act="editBlock" data-date="${k}" data-id="${b.id}" aria-label="Edit block">✎</button></div></li>`; }).join("")}</ul>
     ${(day.carried || []).length ? `<hr><h3>Carried over from yesterday</h3><ul class="list">${day.carried.map((c, i) => `<li><input type="checkbox" data-on="carryDone" data-date="${k}" data-i="${i}" ${c.done ? "checked" : ""} aria-label="Done"><div class="grow"><div class="t1">${esc(c.title)}</div><div class="t2">${c.mins} min — fit it into the matching block, not on top of it</div></div></li>`).join("")}</ul>` : ""}
     <div class="row" style="margin-top:12px"><span class="sp"></span><button class="btn primary" data-act="closeDay" data-date="${k}">Close the day</button></div></div>`;
-  return notes.join("") + `<div class="grid today" style="margin-top:${notes.length ? 12 : 0}px"><div class="stack">${hero}${priCard}${tl}</div><div class="stack">${todayJobs(k)}${todayLearn(k)}${todayWorkout(k)}${todayMeals(k)}${todayBody(k)}${todayTargets(k)}${todayCheckin(k)}</div></div>`;
+  return notes.join("") + `<div class="grid today" style="margin-top:${notes.length ? 12 : 0}px"><div class="stack">${hero}${priCard}${tl}</div><div class="stack">${daySetupCard(k)}${todayJobs(k)}${todayLearn(k)}${todayWorkout(k)}${todayMeals(k)}${todayBody(k)}${todayTargets(k)}${todayCheckin(k)}</div></div>`;
 }
 function goalAlerts(k) {
   const p = settings().profile; const out = [];
@@ -1922,6 +2031,56 @@ function goalAlerts(k) {
   if (p.goal === "maintain" && p.maintainStart && C.daysBetween(p.maintainStart, k) >= 14) out.push(`<div class="note info">Two weeks at maintenance done — ready to return to fat loss? <button class="btn small" data-act="setGoal" data-v="standard">Back to standard fat loss</button></div>`);
   return out;
 }
+function daySummary(k) {
+  const w = dayWork(k), tg = dayTargets(k), sess = sessionFor(k), st = dayStatus(k);
+  const jobs = w.jobs.length ? w.jobs.map(j => `${esc(j.label)} ${j.start}–${j.end}`).join(" + ") : STATUS_LABEL[st] || "Day off";
+  return {jobs, w, tg, sess, st};
+}
+function daySetupCard(k) {
+  const {jobs, w, tg, sess} = daySummary(k);
+  return `<div class="card"><div class="head"><h2>Today's setup</h2><button class="btn small primary" data-act="editDay" data-date="${k}">Edit</button></div>
+  <div class="kv" style="grid-template-columns:auto 1fr"><span class="muted">Work</span><span>${jobs}${w.workMin ? ` <small class="muted">(${Math.floor(w.workMin / 60)}h ${w.workMin % 60 ? w.workMin % 60 + "m" : ""})</small>` : ""}</span>
+  <span class="muted">Steps</span><span>~${fmt(w.steps)} <small class="muted">${esc(w.stepsSource)}</small></span>
+  <span class="muted">Calories</span><span>${fmt(tg.kcal)} kcal ${tg.adj ? `<small class="muted">(${tg.adj > 0 ? "+" : ""}${tg.adj} for today's activity)</small>` : ""}</span>
+  <span class="muted">Workout</span><span>${sess ? esc(sess.name) + (sess.note ? ` <small class="muted">— ${esc(sess.note)}</small>` : "") : w.trainMode === "skip" ? "Skipped today" : "Recovery day"}</span></div></div>`;
+}
+ACT.editDay = el => openModal(daySetupModal, el.dataset.date);
+function daySetupModal(k) {
+  const d = getDay(k), w = dayWork(k), sc = settings().schedule, wd = C.weekday(k); const sh = d.shift || w.tpl.shift || {}; const j2 = (d.job2 !== undefined ? d.job2 : w.tpl.job2) || null;
+  return `${modalHead("Day setup", prettyDate(k))}
+  <h3>Postie shift</h3><label class="row" style="font-weight:600;margin:6px 0"><input type="checkbox" id="dsOff" ${w.postieOn ? "" : "checked"}> Not working as postie this day</label>
+  <div class="fields"><label class="f">Start<input type="time" id="dsStart" value="${sh.start || sc.workStart}"></label><label class="f">Finish<input type="time" id="dsEnd" value="${sh.end || sc.workEnd}"></label></div>
+  <h3 style="margin-top:14px">Second job</h3><label class="row" style="font-weight:600;margin:6px 0"><input type="checkbox" id="dsJ2" ${j2 ? "checked" : ""}> I'm working somewhere else this day</label>
+  <div class="fields"><label class="f">Where / what<input type="text" id="dsJ2Label" value="${esc((j2 && j2.label) || "")}" placeholder="e.g. Warehouse"></label><label class="f">Start<input type="time" id="dsJ2Start" value="${(j2 && j2.start) || "18:00"}"></label><label class="f">Finish<input type="time" id="dsJ2End" value="${(j2 && j2.end) || "21:00"}"></label>
+  <label class="f">Travel (min, each way)<input type="number" id="dsJ2Com" min="0" max="120" value="${j2 && j2.commute != null ? j2.commute : 20}"></label>
+  <label class="f">Type of work<select id="dsJ2Type">${[["walking","Mostly walking (count it in steps)"],["standing","On my feet (shop, warehouse, kitchen)"],["desk","Sitting / desk"]].map(([v, l]) => `<option value="${v}" ${(j2 && j2.type || "standing") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>
+  <h3 style="margin-top:14px">Steps</h3><p class="muted" style="font-size:13px">Leave blank to estimate from your hours (${fmt(C.BASE_STEPS[settings().profile.activity] || 15000)} on a standard round, scaled for longer or shorter shifts). Steps you log in the check-in replace this.</p>
+  <div class="row"><input type="number" id="dsSteps" min="0" max="60000" step="500" value="${d.expSteps ?? ""}" placeholder="~${fmt(w.steps)}" style="max-width:140px" aria-label="Expected steps"><div class="pill-choice">${[[6000,"Low"],[12000,"Lighter"],[15000,"Normal"],[20000,"High"],[25000,"Very high"]].map(([v, l]) => `<button type="button" data-act="dsStepsSet" data-v="${v}">${l} ${fmt(v / 1000)}k</button>`).join("")}</div></div>
+  <h3 style="margin-top:14px">Workout</h3><div class="pill-choice" id="dsMode">${[["auto","Auto (adjust to my day)"],["full","Full session"],["short","Short (~35 min)"],["skip","Skip today"]].map(([v, l]) => `<button type="button" aria-pressed="${(d.trainMode || "auto") === v}" data-act="dsMode" data-v="${v}">${l}</button>`).join("")}</div>
+  <hr><label class="row" style="font-weight:600"><input type="checkbox" id="dsRepeat"> Use this work setup every ${C.DAY_NAMES[wd]}</label>
+  ${Object.keys(w.tpl).length ? `<p class="muted" style="font-size:13px;margin-top:4px">A ${C.DAY_NAMES[wd]} default is saved. <button class="btn ghost small" data-act="dsClearTpl" data-wd="${wd}">Remove it</button></p>` : ""}
+  <div class="row" style="margin-top:14px"><button class="btn" data-act="dsReset" data-date="${k}">Reset this day</button><span class="sp"></span><button class="btn" data-act="closeModal">Cancel</button><button class="btn primary" data-act="dsSave" data-date="${k}">Save</button></div>`;
+}
+ACT.dsStepsSet = el => { $("#dsSteps").value = el.dataset.v; };
+ACT.dsMode = el => { document.querySelectorAll("#dsMode button").forEach(b => b.setAttribute("aria-pressed", b === el)); };
+ACT.dsSave = el => {
+  const k = el.dataset.date, d = getDay(k), wd = C.weekday(k);
+  const off = $("#dsOff").checked, st = $("#dsStart").value, en = $("#dsEnd").value;
+  if (!off && C.toMin(en) <= C.toMin(st)) return toast("Postie finish must be after start.");
+  let job2 = null;
+  if ($("#dsJ2").checked) { const s2 = $("#dsJ2Start").value, e2 = $("#dsJ2End").value; if (!s2 || !e2 || C.toMin(e2) <= C.toMin(s2)) return toast("Second job finish must be after start.");
+    job2 = {label: $("#dsJ2Label").value.trim() || "Second job", start: s2, end: e2, commute: Number($("#dsJ2Com").value) || 0, type: $("#dsJ2Type").value};
+    if (!off && C.toMin(s2) < C.toMin(en) && C.toMin(e2) > C.toMin(st)) return toast("The two jobs overlap — check the times."); }
+  const steps = $("#dsSteps").value === "" ? null : Number($("#dsSteps").value); if (steps != null && !(steps >= 0 && steps <= 60000)) return toast("Steps should be between 0 and 60,000.");
+  const modeBtn = document.querySelector("#dsMode button[aria-pressed=true]"); const mode = modeBtn ? modeBtn.dataset.v : "auto";
+  const shift = {off, start: st, end: en};
+  if ($("#dsRepeat").checked) { const sc = settings().schedule; sc.dayTemplates = Object.assign({}, sc.dayTemplates); sc.dayTemplates[wd] = {shift, job2, expSteps: steps}; saveSettings(); delete d.shift; delete d.job2; delete d.expSteps; }
+  else { d.shift = shift; d.job2 = job2; d.expSteps = steps; }
+  d.trainMode = mode; if (d.status === "work" || d.status === "off") delete d.status; saveDay(d);
+  closeModal(); toast("Day updated — timetable, workout and food adjusted");
+};
+ACT.dsReset = el => { const d = getDay(el.dataset.date); ["shift", "job2", "expSteps", "trainMode"].forEach(x => delete d[x]); saveDay(d); closeModal(); toast("Day reset to your usual pattern"); };
+ACT.dsClearTpl = el => { const sc = settings().schedule; sc.dayTemplates = Object.assign({}, sc.dayTemplates); delete sc.dayTemplates[el.dataset.wd]; saveSettings(); renderModal(); toast("Weekday default removed"); };
 function defaultPriorities(k) {
   const q = C.jobQueue(recs("job"), k); const l = todaysLesson(k); const sess = sessionFor(k);
   return [q.length ? `${q[0].kind}: ${q[0].job.role} at ${q[0].job.company}` : "Submit 1–2 tailored applications to well-matched roles",
@@ -1939,15 +2098,17 @@ function todayLearn(k) {
   <hr><div class="row" style="align-items:flex-start"><input type="checkbox" aria-label="Practice done" data-on="practiceDone" data-date="${k}" ${pd ? "checked" : ""}><div class="grow"><div style="font-weight:600">Practical exercise</div><div style="font-size:14px">${esc(p.t)}</div></div></div></div>`;
 }
 function todayWorkout(k) {
+  if (beforeStart(k)) { const p = PROGRAMME[C.weekday(planStart())]; return `<div class="card"><div class="head"><h2>Training</h2><span class="badge now">Starts ${shortDate(planStart())}</span></div><p>Your training and diet plan begins on <b>${prettyDate(planStart())}</b>${p ? ` with ${esc(p.name)}` : ""}. Until then, walk, sleep well and try a recipe or two.</p><div class="row"><button class="btn small" data-act="go" data-to="train">Preview the programme</button><button class="btn small" data-act="go" data-to="setup">Change start date</button></div></div>`; }
   const sess = sessionFor(k); const w = S.rec.get("wk:" + k);
   if (!sess) return `<div class="card"><div class="head"><h2>Training</h2><span class="badge fit">Recovery</span></div><p>${esc(RECOVERY_DAYS[C.weekday(k)] || "Rest day: easy walk and mobility.")}</p><p class="muted" style="font-size:14px">Your job keeps you on your feet; recovery days are part of the plan.</p></div>`;
-  return `<div class="card"><div class="head"><h2>${esc(sess.name)}</h2><span class="badge fit">${sess.minutes} min</span></div>
+  return `<div class="card"><div class="head"><h2>${esc(sess.name)}</h2><span class="badge fit">${sess.minutes} min</span></div>${sess.note ? `<div class="note info" style="margin-bottom:8px">${esc(sess.note)}. Main lifts kept, extra sets dropped. <button class="btn small" data-act="editDay" data-date="${k}">Change</button></div>` : ""}
   <ul class="list">${sess.ex.map(([id, sets, reps]) => `<li><div class="grow"><div class="t1">${esc(EXERCISES[id].name)}</div><div class="t2">${sets} × ${reps}</div></div>${w && w.exDone && w.exDone[id] ? '<span class="badge fit">Done</span>' : ""}</li>`).join("")}</ul>
   <div class="row" style="margin-top:8px"><button class="btn primary" data-act="startSession" data-date="${k}">${w && w.completed ? "View session" : w ? "Continue session" : "Start session"}</button><button class="btn small" data-act="skipTrain" data-date="${k}">Skip today</button></div></div>`;
 }
 function todayMeals(k) {
-  const dp = dayPlanFor(k); const tt = C.dayTotals(dp, RBI, ING, kv("prices")); const tg = targets(); const day = getDay(k); const meals = day.meals || {};
-  return `<div class="card"><div class="head"><h2>Meals</h2>${dietBadge(dp.diet)}</div>
+  const pre = beforeStart(k) ? `<div class="note info" style="margin-bottom:8px">Preview — your diet plan starts ${shortDate(planStart())}.</div>` : "";
+  const dp = dayPlanFor(k); const tt = C.dayTotals(dp, RBI, ING, kv("prices")); const tg = dayTargets(k); const day = getDay(k); const meals = day.meals || {};
+  return `<div class="card"><div class="head"><h2>Meals</h2>${dietBadge(dp.diet)}</div>${pre}
   ${dp.swapped.length ? `<div class="note" style="margin-bottom:8px">${dp.swapped.length} meal(s) were swapped automatically to follow today's diet rule.</div>` : ""}
   ${dp.carb !== 1 ? `<div class="note info" style="margin-bottom:6px;font-size:13px">Today's rice, chapati and oat portions are ×${dp.carb} to match your ${esc(C.GOALS[settings().profile.goal] ? C.GOALS[settings().profile.goal].label.split(" (")[0].toLowerCase() : "calorie")} target — dal, chana, chicken, eggs and dahi stay full size.</div>` : ""}
   ${SLOTS.map(slot => { const r = RBI[dp.slots[slot]]; if (!r) return ""; const n = C.recipeNutrition(r, ING, 1, dp.carb); const st = meals[slot]; const sn = starchNote(r, dp.carb);
@@ -1984,29 +2145,48 @@ function todayCheckin(k) {
 
 function todayWeek(k) {
   const s = settings(); const days = [0,1,2,3,4,5,6].map(i => C.addDays(k, i));
-  return `<div class="card"><div class="head"><h2>Next 7 days</h2></div><p class="muted" style="font-size:14px">You work every day, so nothing is assumed off. Mark leave, holidays, busy or unavailable days here and the plan adapts.</p><div class="tbl"><table><thead><tr><th>Day</th><th>Diet</th><th>Status</th><th>Training</th><th class="num">Career</th><th>Notes</th></tr></thead><tbody>
+  return `<div class="card"><div class="head"><h2>Next 7 days</h2></div><p class="muted" style="font-size:14px">You work every day, so nothing is assumed off. Mark leave, holidays, busy or unavailable days here and the plan adapts.</p><div class="tbl"><table><thead><tr><th>Day</th><th>Diet</th><th>Status</th><th>Work & steps</th><th>Training</th><th class="num">kcal</th><th class="num">Career</th><th>Notes</th></tr></thead><tbody>
   ${days.map(d => { const day = getDay(d); const b = blocksFor(d); const cf = C.conflicts(b).length; const se = sessionFor(d); const cm = C.careerMinutes(b);
-    return `<tr><td>${shortDate(d)}</td><td>${dietBadge(C.dietForDate(d, s.diet.schedule))}</td><td><select data-on="statusSel" data-date="${d}" aria-label="Status for ${shortDate(d)}">${[["work","Workday"],["busy","Busy"],["leave","Leave / holiday"],["unavailable","Unavailable"]].map(([v, l]) => `<option value="${v}" ${(day.status || "work") === v ? "selected" : ""}>${l}</option>`).join("")}</select></td><td>${se ? esc(se.name) : "Recovery"}</td><td class="num">${Math.floor(cm / 60)}h ${cm % 60}m</td><td>${s.schedule.prepWeekdays.includes(C.weekday(d)) ? '<span class="badge">Batch cook</span> ' : ""}${cf ? `<span class="badge warn">${cf} overlap(s)</span>` : ""}</td></tr>`; }).join("")}</tbody></table></div>
+    return `<tr><td>${shortDate(d)}</td><td>${dietBadge(C.dietForDate(d, s.diet.schedule))}</td><td><select data-on="statusSel" data-date="${d}" aria-label="Status for ${shortDate(d)}">${["work","busy","off","leave","unavailable"].map(v => `<option value="${v}" ${dayStatus(d) === v ? "selected" : ""}>${STATUS_LABEL[v]}</option>`).join("")}</select></td><td><small>${daySummary(d).jobs}<br>~${fmt(dayWork(d).steps)} steps</small> <button class="btn ghost small" data-act="editDay" data-date="${d}" aria-label="Edit day">✎</button></td><td>${se ? esc(se.name) : "Recovery"}</td><td class="num">${fmt(dayTargets(d).kcal)}</td><td class="num">${Math.floor(cm / 60)}h ${cm % 60}m</td><td>${s.schedule.prepWeekdays.includes(C.weekday(d)) ? '<span class="badge">Batch cook</span> ' : ""}${cf ? `<span class="badge warn">${cf} overlap(s)</span>` : ""}</td></tr>`; }).join("")}</tbody></table></div>
   <hr><h3>Mark a date further ahead</h3><div class="row" style="margin-top:6px"><input type="date" id="markDate" style="max-width:180px" aria-label="Date"><select id="markStatus" style="max-width:200px" aria-label="Status"><option value="leave">Leave / holiday</option><option value="unavailable">Unavailable</option><option value="busy">Busy</option><option value="work">Normal workday</option></select><button class="btn" data-act="markDate">Save</button></div>
   ${recs("day").filter(d => d.status && d.status !== "work" && d.date >= k).sort((a, b) => a.date.localeCompare(b.date)).map(d => `<div class="row" style="margin-top:6px"><span class="badge">${esc(d.status)}</span>${shortDate(d.date)}<button class="btn ghost small" data-act="setStatus" data-date="${d.date}" data-v="work">Clear</button></div>`).join("")}</div>`;
 }
+function weekSetupCard() {
+  const s = settings(), sc = s.schedule, wd = sc.workdays || [true,true,true,true,true,true,true];
+  const offs = C.DAY_NAMES.filter((d, i) => wd[i] === false);
+  const gymOff = Object.keys(PROGRAMME).map(Number).filter(i => wd[i] === false).map(i => C.DAY_SHORT[i]);
+  const sample = C.buildSchedule("2026-11-02", Object.assign({}, sc, {trainTime: "morning"}), {status: "work", jobs: [{label: "Postie", main: true, start: sc.workStart, end: sc.workEnd, commute: sc.commute}]}, PROGRAMME[0]);
+  const mWake = sample[0].start, mBed = (sample.find(x => x.id === "winddown") || {}).end || sc.bed;
+  return `<div class="card"><div class="head"><h2>Your week</h2></div>
+  <div class="fields"><label class="f">Training & diet plan starts<input type="date" value="${planStart()}" data-on="planStart"></label>
+  <label class="f">Career plan (week 1) starts<input type="date" value="${s.career.startDate}" data-on="careerStart"></label></div>
+  <p style="font-size:14px;margin:12px 0 6px;font-weight:600">Working days — tap to switch between workday and day off</p>
+  <div class="pill-choice">${C.DAY_SHORT.map((d, i) => `<button aria-pressed="${wd[i] !== false}" data-act="toggleWorkday" data-i="${i}" title="${wd[i] !== false ? "Workday" : "Day off"}">${d} · ${wd[i] !== false ? "Work" : "Off"}</button>`).join("")}</div>
+  <p class="muted" style="font-size:13px;margin-top:6px">${offs.length ? `Days off: ${offs.join(", ")} — they use the day-off timetable (more time for applications, learning and a midday workout).` : "You currently work every day."} Mark one-off leave, holidays or busy days in Today › Week ahead.${gymOff.length ? ` Gym sessions on ${gymOff.join(", ")} happen at midday on those days off.` : ""}</p>
+  <p style="font-size:14px;margin:12px 0 6px;font-weight:600">Workout time on workdays</p>
+  <div class="pill-choice"><button aria-pressed="${(sc.trainTime || "evening") === "evening"}" data-act="trainTime" data-v="evening">After work (recommended)</button><button aria-pressed="${sc.trainTime === "morning"}" data-act="trainTime" data-v="morning">Before work</button></div>
+  <p class="muted" style="font-size:13px;margin-top:6px">${sc.trainTime === "morning" ? `On a standard gym day you'll wake at <b>${mWake}</b> and go to bed at <b>${mBed}</b>, so you still get ${C.sleepHours(mBed, mWake)} hours' sleep. Earlier shifts move both earlier.` : `Gym straight after your round (about 16:15), with your normal ${sc.wake}–${sc.bed} sleep.`}</p></div>`;
+}
+ON.planStart = el => { if (!el.value) return; settings().training.startDate = el.value; saveSettings(); toast("Plan start date saved"); render(); };
+ACT.toggleWorkday = el => { const sc = settings().schedule; sc.workdays = (sc.workdays || [true,true,true,true,true,true,true]).slice(); sc.workdays[+el.dataset.i] = sc.workdays[+el.dataset.i] === false; saveSettings(); render(); };
+ACT.trainTime = el => { settings().schedule.trainTime = el.dataset.v; saveSettings(); toast(el.dataset.v === "morning" ? "Workouts moved to before work" : "Workouts after work"); render(); };
 function todayTemplates() {
   const s = settings().schedule; const sample = C.addDays(todayKey(), 0); const sh = C.sleepHours(s.bed, s.wake);
   const show = (status, title) => { const b = C.buildSchedule(sample, s, {status}, status === "unavailable" ? null : PROGRAMME[0]); const cm = C.careerMinutes(b);
     return `<div class="card"><div class="head"><h2>${title}</h2><span class="badge acc">${Math.floor(cm / 60)}h ${cm % 60}m career</span></div><ul class="ribbon">${b.map(x => `<li data-cat="${x.cat}"><div class="t">${x.start}</div><div></div><span class="bar"></span><div class="ttl">${esc(x.title)}</div><div></div></li>`).join("")}</ul></div>`; };
-  return `<div class="card"><div class="head"><h2>Your fixed times</h2></div><div class="fields">
+  return weekSetupCard() + `<div class="card" style="margin-top:14px"><div class="head"><h2>Your fixed times</h2></div><div class="fields">
     <label class="f">Wake up<input type="time" value="${s.wake}" data-on="sched" data-f="wake"></label><label class="f">Bedtime<input type="time" value="${s.bed}" data-on="sched" data-f="bed"></label>
     <label class="f">Work starts<input type="time" value="${s.workStart}" data-on="sched" data-f="workStart"></label><label class="f">Work ends<input type="time" value="${s.workEnd}" data-on="sched" data-f="workEnd"></label>
     <label class="f">Commute each way (min)<input type="number" min="0" max="180" value="${s.commute}" data-on="sched" data-f="commute"></label><label class="f">Batch-cook session (min)<input type="number" min="30" max="150" value="${s.prepMinutes}" data-on="sched" data-f="prepMinutes"></label></div>
     <p class="${sh < 7 ? "note bad" : "muted"}" style="margin-top:10px">Sleep window: ${sh} hours${sh < 7 ? " — below 7 hours. Move bedtime earlier; study time will shrink automatically rather than sleep." : " (target 7–9)."}</p>
     <p class="muted" style="font-size:14px">Gym days: Mon, Wed, Fri; home session Sat; recovery Tue, Thu, Sun. Batch cooking on ${s.prepWeekdays.map(i => C.DAY_NAMES[i]).join(" and ")} (rest days). When time is short, the plan trims coding first, then learning, then outreach — applications are protected.</p></div>
-  <div class="grid g3" style="margin-top:14px">${show("work", "Workday (gym day)")}${show("busy", "Busy day — short version")}${show("leave", "Leave / non-work day")}</div>`;
+  <div class="grid g3" style="margin-top:14px">${show("work", s.trainTime === "morning" ? "Workday (gym before work)" : "Workday (gym after work)")}${show("busy", "Busy day — short version")}${show("off", "Day off / leave")}</div>`;
 }
 
 /* actions */
 ON.blockDone = el => { const d = getDay(el.dataset.date); d.done = d.done || {}; d.done[el.dataset.id] = el.checked; saveDay(d); render(); };
 ACT.toggleBlock = el => { const d = getDay(el.dataset.date); d.done = d.done || {}; d.done[el.dataset.id] = !d.done[el.dataset.id]; saveDay(d); render(); };
-ACT.setStatus = el => { const d = getDay(el.dataset.date); d.status = el.dataset.v; saveDay(d); toast(`${shortDate(el.dataset.date)} set to ${el.dataset.v === "work" ? "workday" : el.dataset.v}`); render(); };
+ACT.setStatus = el => { const d = getDay(el.dataset.date); d.status = el.dataset.v; saveDay(d); toast(`${shortDate(el.dataset.date)}: ${STATUS_LABEL[el.dataset.v].toLowerCase()}`); render(); };
 ON.statusSel = el => { const d = getDay(el.dataset.date); d.status = el.value; saveDay(d); render(); };
 ACT.markDate = () => { const v = $("#markDate").value; if (!v) return toast("Pick a date first."); const d = getDay(v); d.status = $("#markStatus").value; saveDay(d); toast("Saved"); render(); };
 ON.priText = el => { const d = getDay(el.dataset.date); d.priorities = d.priorities || defaultPriorities(el.dataset.date); d.priorities[+el.dataset.i] = el.value; saveDay(d); };
@@ -2051,7 +2231,7 @@ function closeDayModal(k) {
   ${co.backlog.length ? `<p class="muted" style="font-size:14px">${co.backlog.length} other item(s) go to the career backlog for a lighter day.</p>` : ""}
   <label class="f" style="margin-top:8px">Short reflection<textarea id="refl" placeholder="What went well? What got in the way?">${esc(d.reflection || "")}</textarea></label>
   <hr><h3>Plan tomorrow (${shortDate(tm)})</h3>${tp.map((p, i) => `<input type="text" class="tp" value="${esc(p)}" style="margin:4px 0" aria-label="Tomorrow priority ${i + 1}">`).join("")}
-  <label class="f" style="margin-top:8px">Tomorrow is a…<select id="tStatus">${[["work","Normal workday"],["busy","Busy day (short plan)"],["leave","Leave / holiday"],["unavailable","Unavailable"]].map(([v, l]) => `<option value="${v}" ${(getDay(tm).status || "work") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+  <label class="f" style="margin-top:8px">Tomorrow is a…<select id="tStatus">${["work","busy","off","leave","unavailable"].map(v => `<option value="${v}" ${dayStatus(tm) === v ? "selected" : ""}>${STATUS_LABEL[v]}</option>`).join("")}</select></label>
   <div class="row" style="margin-top:14px"><span class="sp"></span><button class="btn" data-act="closeModal">Cancel</button><button class="btn primary" data-act="saveClose" data-date="${k}">Close day & plan tomorrow</button></div>`;
 }
 ACT.saveClose = el => {
@@ -2298,7 +2478,8 @@ function lastSetsFor(ex, beforeDate) {
 }
 VIEWS.train = () => {
   const t = sub("train", "week");
-  const head = `<div class="top"><div class="grow"><div class="eyebrow">${esc(settings().training.experience)} · gym + home equipment</div><h1>Training</h1></div><button class="btn primary" data-act="startSession" data-date="${todayKey()}">Today's session</button></div>`;
+  const k0 = todayKey(); const wk = beforeStart(k0) ? `starts ${shortDate(planStart())}` : `week ${Math.floor(C.daysBetween(planStart(), k0) / 7) + 1}`;
+  const head = `<div class="top"><div class="grow"><div class="eyebrow">${esc(settings().training.experience)} · ${wk} · ${settings().schedule.trainTime === "morning" ? "before work" : "after work"}</div><h1>Training</h1></div><button class="btn primary" data-act="startSession" data-date="${todayKey()}">Today's session</button></div>`;
   const body = t === "session" ? trainSession(S.ui.sessDate || todayKey()) : t === "library" ? trainLibrary() : t === "history" ? trainHistory() : t === "recovery" ? trainRecovery() : trainWeek();
   return head + tabs("train", [["week", "Weekly programme"], ["session", "Workout session"], ["library", "Workout videos"], ["history", "History & strength"], ["recovery", "Recovery"]]) + body;
 };
@@ -2316,7 +2497,7 @@ function trainSession(k) {
   const p = sessionFor(k);
   if (!p) return `<div class="card"><h2>${shortDate(k)} is a recovery day</h2><p>${esc(RECOVERY_DAYS[C.weekday(k)] || "Easy walk and mobility.")}</p><p class="muted">Want to train anyway? Pick the home full-body session.</p><button class="btn" data-act="forceSession" data-date="${k}">Do the home session instead</button></div>`;
   const w = getWorkout(k); const nhsWarm = NHS_SESSIONS.find(x => x.id === "nhs-warmup"), nhsStr = NHS_SESSIONS.find(x => x.id === "nhs-stretch");
-  return `<div class="row" style="margin-bottom:12px"><h2 style="flex:1">${esc(p.name)} · ${shortDate(k)}</h2>${w.completed ? '<span class="badge fit">Completed</span>' : ""}</div>
+  return `<div class="row" style="margin-bottom:12px"><h2 style="flex:1">${esc(p.name)} · ${shortDate(k)}</h2>${w.completed ? '<span class="badge fit">Completed</span>' : ""}</div>${p.note ? `<div class="note info" style="margin-bottom:12px">${esc(p.note)}: main lifts first, 2 sets each, one ab exercise (~${p.minutes} min). <button class="btn small" data-act="editDay" data-date="${k}">Do the full session instead</button></div>` : ""}
   <div class="card" style="margin-bottom:12px"><div class="head"><h2>1. Warm-up (5 min)</h2>${linkOut(nhsWarm.link.url, "NHS warm-up video")}</div><p style="font-size:14px">${esc(nhsWarm.link.note)} Then do 1–2 light sets of your first exercise.</p><button class="btn small" data-act="timer" data-label="Warm-up" data-min="5">Start 5-min timer</button></div>
   ${(p.ex).map(([id0, sets, reps, rest], i) => { const id = (w.swaps && w.swaps[id0]) || id0; const e = EXERCISES[id]; const d = exDemo(id); const last = lastSetsFor(id, k); const nt = C.nextTarget(last, reps, settings().training.increment);
     const rows = []; for (let s = 1; s <= sets; s++) { const st = (w.sets || []).find(x => x.ex === id && x.set === s) || {}; rows.push(`<div class="setrow"><b aria-label="Set ${s}">#${s}</b><input type="number" step="0.5" min="0" placeholder="${nt.weight != null ? nt.weight : "kg"}" value="${st.kg ?? ""}" data-on="setVal" data-date="${k}" data-ex="${id}" data-set="${s}" data-f="kg" aria-label="Set ${s} weight kg"><input type="number" min="0" placeholder="${/s\b/.test(reps) ? "sec" : "reps"}" value="${st.reps ?? ""}" data-on="setVal" data-date="${k}" data-ex="${id}" data-set="${s}" data-f="reps" aria-label="Set ${s} reps"><select data-on="setVal" data-date="${k}" data-ex="${id}" data-set="${s}" data-f="rir" aria-label="Reps in reserve">${["", "0", "1", "2", "3", "4+"].map(v => `<option value="${v}" ${String(st.rir ?? "") === v ? "selected" : ""}>${v === "" ? "RIR" : v}</option>`).join("")}</select><input type="checkbox" data-on="setDone" data-date="${k}" data-ex="${id}" data-set="${s}" data-rest="${rest}" ${st.done ? "checked" : ""} aria-label="Set ${s} done"></div>`); }
@@ -2419,7 +2600,7 @@ VIEWS.food = () => {
   return head + tabs("food", [["today", "Today"], ["week", "7-day plan"], ["recipes", "Recipes"], ["shop", "Shopping list"], ["prep", "Meal prep"], ["log", "Food log"]]) + body;
 };
 function foodToday() {
-  const k = todayKey(); const dp = dayPlanFor(k); const tt = C.dayTotals(dp, RBI, ING, kv("prices")); const tg = targets(); const df = defrostTonight(k);
+  const k = todayKey(); const dp = dayPlanFor(k); const tt = C.dayTotals(dp, RBI, ING, kv("prices")); const tg = dayTargets(k); const df = defrostTonight(k);
   const needIng = {}; SLOTS.forEach(sl => { const r = RBI[dp.slots[sl]]; if (r && r.fresh) r.ing.forEach(([i, q]) => needIng[i] = (needIng[i] || 0) + q / r.portions * (C.CARB_ING.includes(i) ? dp.carb : 1)); });
   return `<div class="grid g2"><div class="stack">${todayMeals(k)}${df.length ? `<div class="card"><h2>Freezer</h2><p>Tonight, move to the fridge: ${df.map(p => `<b>${esc(p.name)}</b> for ${C.DAY_NAMES[C.weekday(p.date)]} ${p.slot}`).join(", ")}.</p></div>` : ""}</div>
   <div class="stack"><div class="card"><h2>Cook fresh today</h2>${Object.keys(needIng).length ? `<p class="muted" style="font-size:14px">Ingredients for today's freshly cooked items (batch-cooked meals are already in the fridge or freezer):</p><ul class="list">${Object.entries(needIng).map(([i, q]) => `<li><div class="grow">${esc(ING[i].name)}</div><b>${ING[i].unit === "g" || ING[i].unit === "ml" ? Math.round(q) + " " + ING[i].unit : C.round(q, 1) + " " + ING[i].unit}</b></li>`).join("")}</ul>` : `<p class="empty">Everything today is batch-cooked — just reheat until steaming hot.</p>`}</div>
@@ -2604,7 +2785,7 @@ function foodPrep() {
 ON.prepCheck = el => { const o = JSON.parse(JSON.stringify(kv("prepChecks") || {})); o[el.dataset.key] = o[el.dataset.key] || {}; o[el.dataset.key][el.dataset.id] = el.checked; setKV("prepChecks", o); render(); };
 
 function foodLog() {
-  const k = S.ui.logDate || todayKey(); const fs = recs("food").filter(f => f.date === k); const tg = targets();
+  const k = S.ui.logDate || todayKey(); const fs = recs("food").filter(f => f.date === k); const tg = dayTargets(k);
   const tot = fs.reduce((t, f) => { ["kcal","protein","carbs","fat","fibre","cost"].forEach(x => t[x] += Number(f[x]) || 0); return t; }, {kcal: 0, protein: 0, carbs: 0, fat: 0, fibre: 0, cost: 0});
   const days = [...Array(14)].map((_, i) => C.addDays(todayKey(), -13 + i)).map(d => { const x = recs("food").filter(f => f.date === d); return {x: C.parse(d).getDate() + "", y: x.length ? Math.round(x.reduce((s, f) => s + (f.kcal || 0), 0)) : null, p: x.length ? Math.round(x.reduce((s, f) => s + (f.protein || 0), 0)) : null}; });
   const hist = recs("food").filter(f => f.recipe).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8);
@@ -2643,7 +2824,10 @@ function progBody() {
   const wk = [7,6,5,4,3,2,1,0].map(i => { const w = C.addDays(C.weekStart(k), -7 * i); return {w, avg: C.weekAvg(recs("weight"), w)}; });
   const filled = wk.filter(x => x.avg != null); const rate = filled.length >= 2 ? C.round((filled[filled.length - 1].avg - filled[0].avg) / Math.max(1, C.daysBetween(filled[0].w, filled[filled.length - 1].w) / 7), 2) : null;
   const t = targets();
-  return `<div class="grid g2"><div class="card"><div class="head"><h2>Log weight & waist</h2></div><div class="fields"><label class="f">Date<input type="date" id="bwD" value="${k}"></label><label class="f">Weight (kg)<input type="number" id="bwK" step="0.1" min="30" max="300"></label><label class="f">Waist (cm, optional)<input type="number" id="bwW" step="0.5" min="40" max="250"></label></div>
+  const st = planStart(); const firstAfter = recs("weight").filter(w => w.date >= st).sort((a, b) => a.date.localeCompare(b.date))[0];
+  const startW = firstAfter ? firstAfter.kg : p.startWeight; const since = last ? C.round(cur - startW, 1) : null; const wkSince = Math.max(0, Math.floor(C.daysBetween(st, k) / 7));
+  return `<div class="note info" style="margin-bottom:12px">Plan started ${prettyDate(st)}${k >= st ? ` — week ${wkSince + 1}` : " (not yet)"}. Starting weight ${fmt(startW, 1)} kg${since != null && k >= st ? `; change so far <b>${since > 0 ? "+" : ""}${since} kg</b> (7-day average)` : ""}.</div>
+  <div class="grid g2"><div class="card"><div class="head"><h2>Log weight & waist</h2></div><div class="fields"><label class="f">Date<input type="date" id="bwD" value="${k}"></label><label class="f">Weight (kg)<input type="number" id="bwK" step="0.1" min="30" max="300"></label><label class="f">Waist (cm, optional)<input type="number" id="bwW" step="0.5" min="40" max="250"></label></div>
   <div class="row" style="margin-top:8px"><button class="btn primary" data-act="addWeight">Save</button><span class="muted" style="font-size:13px">Weigh after waking, before eating, 3+ mornings a week.</span></div>
   <hr><div class="stats"><div class="stat"><b>${fmt(cur, 1)} kg</b><span>7-day average</span></div><div class="stat"><b>${toGo > 0 ? fmt(toGo, 1) : 0} kg</b><span>to ${p.target} kg</span></div><div class="stat"><b>${rate != null ? (rate > 0 ? "+" : "") + rate : "–"}</b><span>kg / week (trend)</span></div></div>
   <div class="note info" style="margin-top:10px">A sustainable rate is about 0.5–0.75 kg a week (your plan's deficit targets ≈ ${t.weeklyLoss} kg). Over 8 weeks that is roughly ${C.round(0.5 * 8)}–${C.round(0.75 * 8)} kg — visible progress, but not the full ${fmt(p.startWeight - p.target, 0)} kg. Reaching ${p.target} kg would take about ${Math.ceil((cur - p.target) / 0.75)}–${Math.ceil((cur - p.target) / 0.5)} weeks at that pace. Faster loss usually costs muscle, strength and energy.</div></div>
@@ -2706,7 +2890,8 @@ VIEWS.settings = () => {
   const s = settings(); const p = s.profile; const t = targets(); const c = t.computed;
   const ex = s.diet.exclude || [];
   return `<div class="top"><div class="grow"><div class="eyebrow">Stored only on this device</div><h1>Settings & data</h1></div></div>
-  <div class="grid g2"><div class="card"><h2>Profile</h2><div class="fields">
+  ${weekSetupCard()}
+  <div class="grid g2" style="margin-top:14px"><div class="card"><h2>Profile</h2><div class="fields">
   <label class="f wide">Name<input type="text" value="${esc(p.name)}" data-on="prof" data-f="name"></label>
   <label class="f">Current weight (kg)<input type="number" step="0.1" value="${p.weight}" data-on="prof" data-f="weight"></label><label class="f">Target weight (kg)<input type="number" step="0.1" value="${p.target}" data-on="prof" data-f="target"></label>
   <label class="f">Height (cm)<input type="number" value="${p.height}" data-on="prof" data-f="height"></label><label class="f">Age<input type="number" value="${p.age}" data-on="prof" data-f="age"></label>
@@ -2726,7 +2911,7 @@ VIEWS.settings = () => {
   <p style="font-size:14px;margin-top:8px"><b>Exclude ingredients</b> (meals using them are never planned):</p><div class="pill-choice">${["pb","paneer","tofu","cottage","cheddar","mushrooms","milk","yoghurt","lamb","bread","wraps"].map(i => `<button aria-pressed="${ex.includes(i)}" data-act="toggleExclude" data-id="${i}">${esc(ING[i].name.split(" (")[0].split(",")[0])}</button>`).join("")}</div>
   <label class="row" style="margin-top:10px;font-weight:600"><input type="checkbox" data-on="allergyOk" ${s.diet.allergiesConfirmed ? "checked" : ""}> I've checked: these allergies and exclusions are complete</label></div>
 
-  <div class="card"><h2>Career settings</h2><div class="fields"><label class="f">Plan start date (week 1)<input type="date" value="${s.career.startDate}" data-on="careerStart"></label><label class="f">Training experience<select data-on="trainExp">${["Beginner","Beginner–intermediate","Intermediate"].map(x => `<option ${s.training.experience === x ? "selected" : ""}>${x}</option>`).join("")}</select></label>
+  <div class="card"><h2>Career & training settings</h2><div class="fields"><label class="f">Training experience<select data-on="trainExp">${["Beginner","Beginner–intermediate","Intermediate"].map(x => `<option ${s.training.experience === x ? "selected" : ""}>${x}</option>`).join("")}</select></label>
   <label class="f">Weight increment (kg)<input type="number" step="0.5" min="0.5" value="${s.training.increment}" data-on="trainInc"></label>
   <label class="f wide">CV versions (comma-separated)<input type="text" value="${esc(s.career.cvVersions.join(", "))}" data-on="cvs"></label><label class="f wide">Extra skills you can evidence (comma-separated, used by Tailor)<input type="text" value="${esc(s.career.extraSkills.join(", "))}" data-on="extraSkills" placeholder="e.g. Looker, R"></label></div>
   <p class="muted" style="font-size:13px;margin-top:8px">Schedule times are in Today › Schedule templates.</p>
@@ -3132,6 +3317,10 @@ function pwaCard() {
     if (!ss.profile.goal) ss.profile.goal = ss.profile.deficitKcal === 800 ? "standard" : "custom";
     S.kv.meta = Object.assign({}, S.kv.meta, {mealVersion: 6}); ["settings", "meta"].forEach(k => Store.putKV(k, S.kv[k])); S.migratedGoals = true;
   }
+  // v7: plan start date, weekly working pattern, workout time
+  if (!ss.training.startDate) { ss.training.startDate = first ? todayKey() : (ss.career.startDate || todayKey()); Store.putKV("settings", ss); }
+  if (!ss.schedule.workdays) ss.schedule.workdays = [true, true, true, true, true, true, true];
+  if (!ss.schedule.trainTime) ss.schedule.trainTime = "evening";
   refreshCatalog(); applyTheme();
   window.addEventListener("hashchange", route);
   S.view = viewFromHash(location.hash) || "today"; render();
