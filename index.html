@@ -302,6 +302,7 @@ const INGREDIENTS = {
   cucumber:    {name:"Cucumber", unit:"each", pack:1, price:0.75, cat:"Fruit & veg", store:"Fridge, 1 week", n:[36,2,6,0.3,1.5]},
   freshtom:    {name:"Salad tomatoes", unit:"each", pack:6, price:0.85, cat:"Fruit & veg", store:"Room temperature, then fridge", n:[15,0.7,3,0.2,1]},
   lemon:       {name:"Lemon juice (bottle)", unit:"ml", pack:250, price:0.60, cat:"Tins & jars", store:"Fridge once open", n:[25,0.4,8,0,0]},
+  roastchana:  {name:"Roasted chana (ready-to-eat, Indian aisle)", unit:"g", pack:500, price:2.50, cat:"Grains & pantry", store:"Cupboard, airtight", n:[370,22,58,5,17]},
   atta:        {name:"Chapati flour (wholemeal atta)", unit:"g", pack:5000, price:5.50, cat:"Grains & pantry", store:"Cupboard, airtight, 3 months", n:[340,12,64,1.7,11]},
   turmeric:    {name:"Ground turmeric", unit:"g", pack:100, price:0.85, cat:"Spices", store:"Cupboard", n:[312,10,65,3,21]},
   herbs:       {name:"Dried mixed herbs", unit:"g", pack:20, price:0.70, cat:"Spices", store:"Cupboard", n:[260,10,30,6,30]}
@@ -312,6 +313,26 @@ const DEFAULT_PANTRY = {oil:500, curry:80, garam:80, cumin:80, chilli:80, paprik
 /* Recipe schema: ing = [[ingredientId, qtyForWholeBatch]], portions = batch size, times in minutes, cookUnattended = minutes that need no attention.
    Diet category is DERIVED from ingredient flags, never hand-labelled. */
 const RECIPES = [
+  {id:"freshdal", name:"Fresh dal tadka, 3 chapatis & kachumber", meal:"dinner", portions:1, prep:4, cook:20, idle:16, active:14, when:"evening", difficulty:"Easy", quick:true, batch:false, fresh:true,
+   equip:["Saucepan","Small frying pan","Tawa or flat pan"], ing:[["lentils",100],["onion",0.25],["tomatoes",0.25],["garlic",1],["ginger",3],["turmeric",0.5],["cumin",1],["chilli",0.5],["oil",5],["atta",90],["cucumber",0.25],["freshtom",1],["lemon",5]],
+   steps:["Rinse 100 g red lentils, put in a pan with 350 ml water, the tomatoes, ginger, turmeric and salt. Simmer 15–18 min (lid half on) — no stirring needed.","While it simmers, roll and cook your chapatis for tonight (3) and tomorrow's lunch roll (2) from the ready dough — about 1½ min each. (On chicken days, make tomorrow's 2 lunch chapatis with tonight's 3.)","Tadka: heat the oil, fry the pre-chopped onion 3 min, add sliced garlic, cumin and chilli for 30 seconds, pour over the dal.","Kachumber: dice cucumber and tomato, add lemon and salt. Eat straight away."],
+   storage:"Cooked fresh — eat now. Wrap tomorrow's 2 chapatis in foil once cool.", reheat:"No reheating — cooked fresh.", subs:["Red lentils → yellow moong dal (same time)","Chapatis → 60 g rice (cook while dal simmers)"], video:"quick dal tadka 20 minutes"},
+  {id:"chanaroll", name:"Chana & rajma chaat chapati rolls (eat cold)", meal:"lunch", portions:1, prep:5, cook:0, idle:0, active:5, when:"morning", cold:true, difficulty:"Easy", quick:true, batch:false, fresh:true,
+   equip:["Bowl","Foil or lunch box","Ice pack + insulated bag"], ing:[["chickpeas",0.33],["kidney",0.33],["onion",0.25],["cucumber",0.25],["freshtom",1],["lemon",10],["cumin",1],["chilli",0.5],["yoghurt",100],["seeds",10],["atta",60]],
+   steps:["Take a third of a tin each of chickpeas and kidney beans (open tins keep 2–3 days in a covered box in the fridge) and lightly crush with a fork.","Mix with pre-chopped onion, diced cucumber and tomato, lemon juice, cumin, chilli and salt; stir in the seeds.","Spread yoghurt on the 2 chapatis you made last night, add the filling and roll tightly. Wrap in foil.","Pack with an ice pack; eat within 4 hours."],
+   storage:"Keep cold: insulated bag + ice pack, eat within 4 hours. Leftover chickpeas: fridge in a covered box, 2 days.", reheat:"Eaten cold — no reheating.", subs:["Kidney beans → black-eyed beans or more chickpeas","Chapatis → 2 slices wholemeal bread"], video:"chana chaat wrap"},
+  {id:"chickenroll", name:"Chicken tikka chapati rolls (eat cold)", meal:"lunch", portions:1, prep:3, cook:8, idle:0, active:9, when:"evening", flow:[{when:"thaw",active:0,text:"Move one marinated chicken portion from the freezer to the fridge"},{when:"evening-before",active:7,text:"Fry the marinated chicken strips 7–8 min while the dal simmers; cool 15 min, then fridge"},{when:"morning",active:2,text:"Roll the cold chicken in 2 chapatis with yoghurt, onion & cucumber; pack with an ice pack"}], cold:true, difficulty:"Easy", quick:true, batch:false, fresh:true,
+   equip:["Frying pan","Separate board for raw meat","Foil or lunch box","Ice pack + insulated bag"], ing:[["chicken",160],["yoghurt",100],["garam",2],["chilli",1],["turmeric",0.5],["oil",5],["onion",0.25],["cucumber",0.25],["lemon",5],["atta",60]],
+   steps:["Last night: move one frozen marinated chicken portion to the fridge.","Evening, while the dal simmers: fry the marinated chicken strips in the oil over a high heat, 7–8 min, until cooked through (no pink).","Cool on a plate for 15 min, then into a box in the fridge.","Morning (2 min): spread yoghurt on 2 chapatis, add cold chicken, onion and cucumber, squeeze of lemon, roll and wrap. Pack with an ice pack; eat within 4 hours."],
+   storage:"Cooked chicken: fridge overnight, eat next day. Keep cold in an insulated bag with an ice pack; eat within 4 hours.", reheat:"Eaten cold — no reheating.", subs:["Chicken → 3 boiled eggs, sliced","Chapatis → wholemeal wrap or bread"], video:"chicken tikka wrap"},
+  {id:"chickentikka", name:"Chicken tikka, 3 chapatis & kachumber", meal:"dinner", portions:1, prep:3, cook:14, idle:6, active:15, when:"evening", difficulty:"Easy", quick:true, batch:false, fresh:true,
+   flow:[{when:"morning",active:0,text:"Move tonight's marinated chicken portion from the freezer to the fridge (thin strips thaw by evening; if not, sealed bag in cold water 30–45 min)"},{when:"evening",active:15,text:"Cook chicken tikka with onion & tomato (12 min), roll 3 chapatis while it sizzles, quick kachumber"}],
+   equip:["Frying pan","Tawa or flat pan","Separate board for raw meat"], ing:[["chicken",180],["yoghurt",60],["onion",0.5],["tomatoes",0.25],["garam",3],["chilli",1],["turmeric",0.5],["oil",8],["atta",90],["cucumber",0.25],["freshtom",1],["lemon",5]],
+   steps:["Morning: move one frozen marinated chicken portion to the fridge.","Evening: heat the oil, fry the pre-chopped onion 3 min.","Add the chicken strips (marinade and all), turn the heat up and cook 8–10 min, turning, until charred at the edges and cooked through — no pink inside.","Stir in the chopped tomatoes and a pinch of garam masala for 2 min.","While the chicken cooks, roll and cook 3 chapatis from the ready dough.","Dice cucumber and tomato with lemon and salt. Eat straight away."],
+   storage:"Cooked fresh — eat now.", reheat:"No reheating — cooked fresh.", subs:["Chicken → 3-egg masala bhurji (5 min)","Chapatis → 60 g rice"], video:"chicken tikka pan 15 minutes"},
+  {id:"chanasnack", name:"Roasted chana & cucumber", meal:"snack", portions:1, prep:1, cook:0, idle:0, active:1, when:"any", difficulty:"Easy", quick:true, batch:false, fresh:true,
+   equip:["Tub"], ing:[["roastchana",40],["cucumber",0.25]], steps:["Put a handful (40 g) of ready roasted chana in a tub with cucumber slices."],
+   storage:"Cupboard (chana); cucumber in the fridge.", reheat:"Not needed.", subs:["Roasted chana → 2 boiled eggs on non-veg days"], video:"roasted chana snack"},
   {id:"chapati", name:"Home-made chapatis", meal:"side", portions:12, prep:20, cook:20, idle:15, difficulty:"Easy", quick:false, batch:true, fresh:false,
    equip:["Mixing bowl","Rolling pin","Tawa or flat frying pan"], ing:[["atta",360],["oil",5]],
    steps:["Mix the atta with a pinch of salt. Add about 220 ml warm water a little at a time and knead for 5 minutes into a soft, smooth dough. Rub with the oil.","Cover and rest for 15 minutes.","Divide into 12 balls. Roll each into a thin circle about 15 cm across, dusting with flour.","Cook on a hot dry tawa or frying pan for about 30 seconds, flip, cook 30 seconds more, then press the edges with a cloth so it puffs.","Stack in a clean tea towel to keep soft. Cool, then freeze in bags of 2–3 with baking paper between them."],
@@ -350,7 +371,7 @@ const RECIPES = [
    steps:["Chop onions and garlic on the veg board. Cut the chicken into chunks on the raw-meat board; wash hands, board and knife afterwards.","Fry the onions in the oil for 8 minutes until golden.","Add garlic, ginger and the spices; stir 1 minute.","Add the chicken and cook 5 minutes, then the tomatoes and 150 ml water. Cover and simmer 15 minutes.","Stir in the yoghurt off the heat a spoon at a time, add the peas, and simmer 5 minutes until the chicken is cooked through (no pink inside).","Serve with rice and a quick kachumber salad (¼ cucumber, 1 tomato, lemon, salt) made on the day."],
    storage:"Cool within 1 hour. Fridge 2 days or freeze 3 months. Rice: fridge no more than 1 day or freeze straight away.", reheat:"Defrost in the fridge overnight; microwave until steaming hot throughout. Reheat only once.",
    subs:["Chicken thighs → drumsticks (cheaper, cook 10 minutes longer)","Peas → spinach"], video:"easy chicken curry recipe"},
-  {id:"oats", name:"Protein overnight oats", meal:"breakfast", portions:1, prep:5, cook:0, idle:480, difficulty:"Easy", quick:true, batch:false, fresh:true,
+  {id:"oats", name:"Protein overnight oats", meal:"breakfast", portions:1, prep:3, cook:0, idle:480, active:3, when:"night", flow:[{when:"night-before",active:3,text:"Make overnight oats in a jar for tomorrow (oats, milk, yoghurt, berries)"}], difficulty:"Easy", quick:true, batch:false, fresh:true,
    equip:["Jar or tub with lid"], ing:[["oats",80],["milk",200],["yoghurt",150],["berries",80],["honey",10]],
    steps:["Put the oats in a jar or tub.","Stir in the milk and yoghurt until no dry oats remain.","Add the frozen berries on top — they thaw overnight.","Drizzle over the honey, close the lid and refrigerate overnight (at least 6 hours).","Eat cold, or stir and take to work in the same tub."],
    storage:"Fridge for up to 2 days. Make two jars at once to save time.", reheat:"Eat cold, or microwave 1½–2 minutes, stirring halfway.",
@@ -429,15 +450,15 @@ const RECIPES = [
    ing:[["lamb",500],["peas",300],["onion",2],["garlic",4],["ginger",15],["garam",10],["tomatoes",1],["oil",5],["rice",280]],
    steps:["Brown the lamb mince in a dry pan for 6–8 minutes; pour off excess fat.","Add chopped onion and the oil; cook 5 minutes.","Add garlic, ginger and garam masala for 1 minute.","Add tomatoes and 200 ml water; simmer 15 minutes.","Add the peas; simmer 5 minutes.","Serve with rice."],
    storage:"Fridge 2 days or freeze 3 months. Rice: no more than 1 day in the fridge.", reheat:"Microwave until steaming hot throughout.", subs:["Lamb → chicken thigh mince or diced chicken (cheaper)","Peas → spinach"], video:"lamb keema peas easy"},
-  {id:"yogbowl", name:"Dahi with banana, oats & seeds", meal:"snack", portions:1, prep:3, cook:0, idle:0, difficulty:"Easy", quick:true, batch:false, fresh:true,
+  {id:"yogbowl", name:"Dahi with banana, oats & seeds", meal:"snack", portions:1, prep:2, active:2, when:"morning", cook:0, idle:0, difficulty:"Easy", quick:true, batch:false, fresh:true,
    equip:["Bowl or tub"], ing:[["yoghurt",300],["bananas",1],["oats",15],["seeds",15]],
    steps:["Spoon the yoghurt into a bowl or tub.","Slice the banana on top and sprinkle over the oats and seeds."], storage:"Fridge up to 1 day (add banana when eating).", reheat:"Not needed.",
    subs:["Banana → frozen berries"], video:"greek yogurt bowl"},
   {id:"cottagepot", name:"Cottage cheese & berry pot", meal:"snack", portions:1, prep:2, cook:0, idle:0, difficulty:"Easy", quick:true, batch:false, fresh:true,
    equip:["Tub"], ing:[["cottage",200],["berries",80]], steps:["Put the cottage cheese in a tub and add the frozen berries; they thaw in about 30 minutes."],
    storage:"Fridge up to 1 day.", reheat:"Not needed.", subs:["Berries → banana"], video:"cottage cheese snack"},
-  {id:"boiledeggs", name:"Two boiled eggs with cucumber & carrot sticks", meal:"snack", portions:1, prep:3, cook:9, idle:8, difficulty:"Easy", quick:true, batch:false, fresh:true,
-   equip:["Small saucepan"], ing:[["eggs",2],["cucumber",0.25],["carrots",100]], steps:["Lower the eggs into boiling water; boil 8–9 minutes for firm yolks.","Cool under cold water, peel, and sprinkle with salt, pepper and a pinch of chilli powder.","Cut a quarter of a cucumber and a carrot into sticks to eat alongside."],
+  {id:"boiledeggs", name:"Two boiled eggs with cucumber & carrot sticks", meal:"snack", portions:1, prep:3, cook:9, idle:8, active:2, when:"evening", flow:[{when:"morning",active:2,text:"Boil 2 eggs while you make your roll (9 min, hands-off); cool under the tap, pack with cucumber & carrot sticks"}], difficulty:"Easy", quick:true, batch:false, fresh:true,
+   equip:["Small saucepan"], ing:[["eggs",2],["cucumber",0.25],["carrots",100]], steps:["Lower the eggs into boiling water and boil 8–9 minutes for firm yolks while you make your lunch roll.","Cool under cold water, peel, and sprinkle with salt, pepper and a pinch of chilli powder.","Cut a quarter of a cucumber and a carrot into sticks to eat alongside."],
    storage:"Boiled eggs in their shells: fridge up to 2 days.", reheat:"Eat cold.", subs:["Add a banana if you are hungry"], video:"how to boil eggs"},
   {id:"roastchickpeas", name:"Masala roasted chana", meal:"snack", portions:2, prep:3, cook:30, idle:28, difficulty:"Easy", quick:false, batch:true, fresh:false,
    equip:["Roasting tray"], ing:[["chickpeas",2],["oil",10],["chilli",2],["cumin",2]],
@@ -450,8 +471,9 @@ const RECIPES = [
 
 /* Default 7-day plan (weekday index 0 = Monday). Slots: breakfast, lunch, dinner, snack1, snack2. Lamb is optional — not in the default plan. */
 /* Same pattern every week (weekday 0 = Monday). Two day types repeat to keep shopping short and cheap. */
-const VEG_DAY = {breakfast:"masalaoats", lunch:"chanamasala", dinner:"daltadka", snack1:"yogbowl", snack2:"beansalad"};
-const NONVEG_DAY = {breakfast:"eggbhurji", lunch:"chickencurry", dinner:"daltadka", snack1:"yogbowl", snack2:"boiledeggs"};
+/* Fresh-daily pattern: no batch cooking, no reheating. Lunch is a cold chapati roll (no microwave on the round). */
+const VEG_DAY = {breakfast:"oats", lunch:"chanaroll", dinner:"freshdal", snack1:"yogbowl", snack2:"chanasnack"};
+const NONVEG_DAY = {breakfast:"oats", lunch:"chanaroll", dinner:"chickentikka", snack1:"yogbowl", snack2:"boiledeggs"};
 const DEFAULT_PLAN = {0:VEG_DAY, 1:NONVEG_DAY, 2:NONVEG_DAY, 3:VEG_DAY, 4:NONVEG_DAY, 5:VEG_DAY, 6:NONVEG_DAY};
 const DEFAULT_EXCLUDE = ["tofu","cheddar","cottage","paneer"];
 const SLOTS = ["breakfast","lunch","dinner","snack1","snack2","snack3","snack4"];
@@ -1295,6 +1317,41 @@ const Core = (() => {
     add("Clean down", "Wash the boards separately, wipe surfaces with hot soapy water, take bins out if there was raw meat packaging.");
     return steps;
   }
+  /* ---------- fresh daily cooking (no batch cooking, no reheating) ----------
+     What you actually do ON day k: tonight's jobs for tomorrow, this morning's assembly, this evening's cooking. */
+  function recipeFlow(r) {
+    if (r.flow) return r.flow;
+    const w = r.when || (r.fresh ? (r.meal === "breakfast" || r.meal === "lunch" ? "morning" : "evening") : "batch");
+    const map = {night: "night-before", morning: "morning", evening: "evening", any: "morning", batch: "batch"};
+    return [{when: map[w] || "evening", active: r.active != null ? r.active : r.prep, text: r.name}];
+  }
+  function dayFlow(k, planFor, RBI) {
+    const today = planFor(k), tom = planFor(addDays(k, 1)), after = planFor(addDays(k, 2));
+    const out = {morning: [], evening: [], night: []};
+    const push = (when, r, part, forDay) => out[when].push({recipe: r.id, name: r.name, text: part.text || r.name, active: part.active || 0, forDay, cold: !!r.cold});
+    Object.entries(today.slots).forEach(([slot, id]) => { const r = RBI[id]; if (!r) return; recipeFlow(r).forEach(p => {
+      if (p.when === "morning") push("morning", r, p, k); if (p.when === "evening") push("evening", r, p, k); }); });
+    Object.entries(tom.slots).forEach(([slot, id]) => { const r = RBI[id]; if (!r) return; recipeFlow(r).forEach(p => {
+      if (p.when === "evening-before") push("evening", r, p, addDays(k, 1)); if (p.when === "night-before") push("night", r, p, addDays(k, 1)); }); });
+    Object.entries(after.slots).forEach(([slot, id]) => { const r = RBI[id]; if (!r) return; recipeFlow(r).forEach(p => { if (p.when === "thaw") push("night", r, p, addDays(k, 2)); }); });
+    const sum = a => a.reduce((s2, x) => s2 + x.active, 0);
+    return Object.assign(out, {minutes: {morning: sum(out.morning), evening: sum(out.evening), night: sum(out.night)}, total: sum(out.morning) + sum(out.evening) + sum(out.night)});
+  }
+  /* Weekly ingredient prep (not meal prep): chop, make dough, marinate & freeze, portion dry goods for the days until the next prep day. */
+  function ingredientPrep(dates, planFor, RBI, ING) {
+    const need = {}; let chicken = 0, dal = 0, rolls = 0;
+    dates.forEach(k => { const dp = planFor(k); Object.values(dp.slots).forEach(id => { const r = RBI[id]; if (!r) return; const cf = dp.carb || 1;
+      r.ing.forEach(([i, q]) => need[i] = (need[i] || 0) + q / r.portions * (CARB_ING.includes(i) ? cf : 1));
+      if (r.ing.some(([i]) => i === "chicken")) chicken++; if (r.ing.some(([i]) => i === "lentils") && r.meal === "dinner") dal++; if (r.cold) rolls++; }); });
+    const tasks = [];
+    if (need.onion) tasks.push({id: "onion", mins: Math.ceil(need.onion) * 2, title: `Chop ${Math.ceil(need.onion)} onion${need.onion > 1 ? "s" : ""}`, detail: "Finely chop, store in an airtight box in the fridge — keeps 4 days. Saves the most time on cooking days."});
+    if (need.atta) { const g = Math.round(need.atta / 10) * 10; tasks.push({id: "dough", mins: 8, title: `Make chapati dough: ${g} g atta`, detail: `Knead with about ${Math.round(g * 0.6)} ml warm water and a pinch of salt for 5 min. Wrap tightly / airtight box in the fridge — keeps 3 days. Make the rest at your mid-week top-up.`}); }
+    if (chicken) { const g = Math.round(need.chicken); tasks.push({id: "chicken", mins: 8, title: `Marinate ${chicken} chicken portion${chicken > 1 ? "s" : ""} and freeze`, detail: `Cut ${g} g chicken into strips on the raw-meat board. Mix each 160 g portion with 2 tbsp yoghurt, ½ tsp garam masala, chilli, turmeric, salt. Freeze flat in separate bags. Wash board, knife and hands.`}); }
+    if (dal) tasks.push({id: "lentils", mins: 3, title: `Weigh out ${dal} × 100 g red lentils`, detail: "Into bags or jars, one per dal dinner — no weighing on busy evenings."});
+    if (need.cucumber || need.freshtom) tasks.push({id: "veg", mins: 4, title: "Wash and dry salad veg", detail: "Cucumbers and tomatoes: wash, dry, keep whole in the fridge drawer (cut on the day so they stay crisp)."});
+    tasks.push({id: "check", mins: 2, title: "Check stock", detail: "Yoghurt, milk, eggs, roasted chana, bananas, lemon juice; ice pack in the freezer."});
+    return {tasks, minutes: tasks.reduce((s2, t) => s2 + t.mins, 0), counts: {chicken, dal, rolls}};
+  }
   function prepMinutes(session, RBI) {
     const prep = session.recipes.reduce((s, x) => s + RBI[x.id].prep, 0);
     const longest = Math.max(0, ...session.recipes.map(x => RBI[x.id].cook));
@@ -1340,10 +1397,10 @@ const Core = (() => {
         t = b("ready", wakeW, 10, "Wake, water & a small snack (banana)", "personal");
         t = b("train", t, tdur, (sess.place === "gym" ? "Gym: " : "Home workout: ") + sess.name, "fitness");
         t = b("shower", t, 20, "Shower & get ready for work", "personal");
-        t = b("breakfast", t, 20, "Breakfast & pack lunch", "meal");
+        t = b("breakfast", t, 20, "Breakfast & make lunch roll (5 min)", "meal");
       } else {
         t = b("ready", wakeW, 30, shift ? `Get up (${shift} min earlier for today's start)` : "Get up, wash and dress", "personal");
-        t = b("breakfast", t, 20, "Breakfast & pack lunch", "meal");
+        t = b("breakfast", t, 20, "Breakfast & make lunch roll (5 min)", "meal");
       }
       const leave = first.s0 - first.c - 5;
       if (status !== "busy" && leave - t >= 20) t = b("morning", t, Math.min(30, leave - t), CAREER_LABEL.morning, "career", {focus: true, ctype: "interview"});
@@ -1383,21 +1440,21 @@ const Core = (() => {
         const wd2 = day && day.lowSteps ? 30 : 15;
         if (fits(wd2 + (dinnerDone ? 0 : 30))) t = day && day.lowSteps ? b("walk", t, 30, "Brisk 30-min walk (low-step day)", "fitness") : b("walk", t, 15, "Foot, calf & hip stretches (recovery day — your round is your cardio)", "fitness");
       }
-      if (prepDay) { const pm = s.prepMinutes || 75; if (fits(pm + (dinnerDone ? 0 : 30))) t = b("prep", t, pm, "Batch cook & portion meals", "meal"); else blocks.push({id: "prepskip", start: toTime(t), end: toTime(t), mins: 0, title: "No time to batch cook today — use freezer portions and cook tomorrow", cat: "meal"}); }
+      if (prepDay) { const pm = s.prepMinutes || 75; if (fits(pm + (dinnerDone ? 0 : 45))) t = b("prep", t, pm, "Ingredient prep: chop, dough, marinate (see Food › Prep & cooking)", "meal"); else blocks.push({id: "prepskip", start: toTime(t), end: toTime(t), mins: 0, title: "No time for ingredient prep today — do it tomorrow", cat: "meal"}); }
       // evening career allocation
-      const dinner = dinnerDone ? 0 : Math.min(30, Math.max(0, limit - t - 10)), brk = 10;
+      const dinner = dinnerDone ? 0 : Math.min(45, Math.max(0, limit - t - 10)), brk = 10;
       const rev = Math.min(review, Math.max(0, limit - t - dinner));
       const avail = (limit - rev) - t - dinner - brk;
       const want = status === "busy" ? {apps: Math.max(0, 45 - appsInGap), tech: 20, outreach: 15, interview: 0, coding: 0} : {apps: Math.max(0, 90 - appsInGap), tech: 75, coding: 45, outreach: 30, interview: 0};
       const al = allocate(Math.max(0, avail), want, status === "busy" ? {apps: 0, tech: 0, outreach: 10} : {apps: appsInGap ? 0 : 45, tech: 45, outreach: 15});
       t = b(appsInGap ? "apps2" : "apps", t, al.apps, CAREER_LABEL.apps, "career", {focus: true, ctype: "apps"});
-      t = b("dinner", t, dinner, "Dinner", "meal");
+      t = b("dinner", t, dinner, "Cook & eat dinner (about 15 min cooking)", "meal");
       t = b("tech", t, al.tech, CAREER_LABEL.tech, "career", {focus: true, ctype: "tech"});
       if (al.coding > 0) { t = b("break", t, brk, "Short break, water, stretch", "personal"); t = b("coding", t, al.coding, CAREER_LABEL.coding, "career", {focus: true, ctype: "coding"}); }
       t = b("outreach", t, al.outreach, CAREER_LABEL.outreach, "career", {focus: true, ctype: "outreach"});
       t = b("review", t, rev, CAREER_LABEL.review, "career", {focus: true, ctype: "review"});
       const free = limit - t; if (free >= 10) t = b("free", t, free, "Free time", "personal");
-      b("winddown", limit, windDown, morning ? "Wind-down and early bed (gym before work tomorrow)" : "Wind-down: screens off, tomorrow's clothes, bed", "sleep");
+      b("winddown", limit, windDown, morning ? "Wind-down: overnight oats (3 min), early bed" : "Wind-down: overnight oats for tomorrow (3 min), clothes ready, bed", "sleep");
     } else if (status === "leave" || status === "off") {
       let t = b("ready", wake, 30, "Get up, wash and dress", "personal");
       t = b("breakfast", t, 30, "Breakfast", "meal");
@@ -1410,7 +1467,7 @@ const Core = (() => {
       else t = b("walk", t, 40, "Longer walk outdoors", "fitness");
       t = b("outreach", t, 30, CAREER_LABEL.outreach, "career", {focus: true, ctype: "outreach"});
       t = b("interview", t, 30, CAREER_LABEL.interview, "career", {focus: true, ctype: "interview"});
-      if (prepDay) t = b("prep", t, s.prepMinutes || 75, "Batch cook & portion meals", "meal");
+      if (prepDay) t = b("prep", t, s.prepMinutes || 30, "Ingredient prep: chop, dough, marinate", "meal");
       const dinnerAt = Math.max(t, 19 * 60);
       if (dinnerAt - t >= 10) b("free1", t, dinnerAt - t, "Free time / errands", "personal");
       t = b("dinner", dinnerAt, 45, "Dinner", "meal");
@@ -1601,7 +1658,7 @@ const Core = (() => {
 
   return {pad, key, parse, addDays, weekday, weekStart, daysBetween, DAY_NAMES, DAY_SHORT, toMin, toTime, round,
     DEFAULT_DIET, dietForDate, recipeDiet, recipeFlags, recipeAllowed, slotGroup, recipeNutrition, recipeCost, CARB_ING, unitPrice, computeTargets, ACTIVITY,
-    dayPlan, portionPlan, GOALS, dayAdjust, BASE_STEPS, weekDates, dayTotals, planViolations, shoppingList, cheapestPlan, budgetReport, prepSessions, prepMinutes,
+    dayPlan, portionPlan, GOALS, dayFlow, recipeFlow, ingredientPrep, dayAdjust, BASE_STEPS, weekDates, dayTotals, planViolations, shoppingList, cheapestPlan, budgetReport, prepSessions, prepMinutes,
     buildSchedule, conflicts, sleepHours, careerMinutes, carryOver, CAREER_LABEL,
     weightSeries, weekAvg, weightTrend, e1rm, parseRange, nextTarget, jobQueue, jobStats, parseJD, recommendTrack, weeklyReview,
     validateBackup, mergeRecords, toCSV, RECORD_TYPES, CLOSED};
@@ -1668,7 +1725,7 @@ const DEFAULTS = () => ({
   settings: {
     profile: {name: "Sai Gopesh Rayudu", weight: 94, startWeight: 94, target: 75, height: 188, age: 23, sex: "male", location: "UK", activity: 1.65, goal: "standard", deficit: 0.2, deficitKcal: 800, proteinPerKg: 1.6,
       quals: "an MSc in Data Science (First Class Honours) and Microsoft DP-600, DP-700 and PL-300 certifications", qualsShort: "MSc Data Science, DP-600, DP-700, PL-300", links: ""},
-    schedule: {wake: "07:00", bed: "23:00", workStart: "09:00", workEnd: "15:30", commute: 30, prepWeekdays: [3, 6], prepMinutes: 90, workdays: [true, true, true, true, true, true, true], trainTime: "evening"},
+    schedule: {wake: "07:00", bed: "23:00", workStart: "09:00", workEnd: "15:30", commute: 30, prepWeekdays: [3, 6], prepMinutes: 30, workdays: [true, true, true, true, true, true, true], trainTime: "evening"},
     targetsOverride: null,
     diet: {schedule: C.DEFAULT_DIET.slice(), allergies: "", allergiesConfirmed: false, exclude: DEFAULT_EXCLUDE.slice()},
     food: {budget: 50, supermarket: "", quickMode: false, animalOnNonveg: true},
@@ -1679,7 +1736,7 @@ const DEFAULTS = () => ({
   pantry: Object.assign({}, DEFAULT_PANTRY), prices: {}, planTemplate: JSON.parse(JSON.stringify(DEFAULT_PLAN)), planOverrides: {},
   favs: [], recipeVideos: {}, exVideos: {}, skills: SKILLS.map(s => ({id: s.id, level: s.level})), prepChecks: {}, shopChecks: {}, customIng: {},
   habits: [{id: "h1", name: "Hit protein target"}, {id: "h2", name: "7+ hours sleep"}, {id: "h3", name: "Foot & calf stretch after the round"}, {id: "h4", name: "2+ litres of water"}, {id: "h5", name: "Screens off by 22:30"}],
-  practiceDone: {}, backlog: [], meta: {created: new Date().toISOString(), version: 1, mealVersion: 6}
+  practiceDone: {}, backlog: [], meta: {created: new Date().toISOString(), version: 1, mealVersion: 8}
 });
 const kv = k => S.kv[k];
 function setKV(k, v) { S.kv[k] = v; Store.putKV(k, v); }
@@ -1998,7 +2055,7 @@ function todayDay(k) {
   if (!s.diet.allergiesConfirmed) notes.push(`<div class="note">Meal plan is provisional until you confirm allergies and other restrictions. <a href="#setup" data-act="go" data-to="settings">Confirm in Settings</a></div>`);
   if (S.rec.has("day:" + y) && !yd.closed && blocksFor(y).some(b => b.cat === "career" && b.focus && !(yd.done || {})[b.id])) notes.push(`<div class="note info">Yesterday isn't closed yet. <button class="btn small" data-act="closeDay" data-date="${y}">Close yesterday</button></div>`);
   const df = defrostTonight(k); if (df.length) notes.push(`<div class="note"><b>Tonight:</b> move ${df.map(p => esc(p.name) + " (" + C.DAY_SHORT[C.weekday(p.date)] + " " + p.slot + ")").join(", ")} from the freezer to the fridge.</div>`);
-  if (s.schedule.prepWeekdays.includes(C.weekday(k)) && day.status !== "unavailable") notes.push(`<div class="note info">Batch-cooking day. <a href="#food" data-act="go" data-to="food" data-sub="prep">Open the meal-prep checklist</a></div>`);
+  if (s.schedule.prepWeekdays.includes(C.weekday(k)) && dayStatus(k) !== "unavailable") notes.push(`<div class="note info">Ingredient-prep day (about ${s.schedule.prepMinutes} min). <a href="#food" data-act="go" data-to="food" data-sub="prep">Open the prep checklist</a></div>`);
   notes.push(...goalAlerts(k));
   const careerMin = C.careerMinutes(blocks);
   const statusPills = ["work", "busy", "off", "leave", "unavailable"].map(v => `<button aria-pressed="${dayStatus(k) === v}" data-act="setStatus" data-date="${k}" data-v="${v}">${STATUS_LABEL[v]}</button>`).join("");
@@ -2112,8 +2169,9 @@ function todayMeals(k) {
   ${dp.swapped.length ? `<div class="note" style="margin-bottom:8px">${dp.swapped.length} meal(s) were swapped automatically to follow today's diet rule.</div>` : ""}
   ${dp.carb !== 1 ? `<div class="note info" style="margin-bottom:6px;font-size:13px">Today's rice, chapati and oat portions are ×${dp.carb} to match your ${esc(C.GOALS[settings().profile.goal] ? C.GOALS[settings().profile.goal].label.split(" (")[0].toLowerCase() : "calorie")} target — dal, chana, chicken, eggs and dahi stay full size.</div>` : ""}
   ${SLOTS.map(slot => { const r = RBI[dp.slots[slot]]; if (!r) return ""; const n = C.recipeNutrition(r, ING, 1, dp.carb); const st = meals[slot]; const sn = starchNote(r, dp.carb);
-    return `<div class="meal"><div><div class="slot">${SLOT_LABEL[slot]}</div><button class="btn ghost" style="padding:0;font-weight:600;text-align:left" data-act="openRecipe" data-id="${r.id}">${esc(r.name)}</button><div class="muted" style="font-size:13px">${fmt(n.kcal)} kcal · ${fmt(n.protein)} g protein · ${gbp(C.recipeCost(r, ING, kv("prices"), 1, dp.carb))}${r.fresh ? ` · ${r.prep + r.cook} min` : " · batch-cooked, reheat"}${sn ? `<br><b style="color:var(--ink)">Portion: ${esc(sn)}</b>` : ""}</div></div>
+    return `<div class="meal"><div><div class="slot">${SLOT_LABEL[slot]}</div><button class="btn ghost" style="padding:0;font-weight:600;text-align:left" data-act="openRecipe" data-id="${r.id}">${esc(r.name)}</button><div class="muted" style="font-size:13px">${fmt(n.kcal)} kcal · ${fmt(n.protein)} g protein · ${gbp(C.recipeCost(r, ING, kv("prices"), 1, dp.carb))}${r.fresh ? ` · ${r.prep + r.cook} min` : " · batch-cooked"}${r.cold ? " · eat cold" : ""}${sn ? `<br><b style="color:var(--ink)">Portion: ${esc(sn)}</b>` : ""}</div></div>
     <div class="row" style="flex-direction:column;align-items:flex-end;gap:4px"><button class="btn small" data-act="mealState" data-date="${k}" data-slot="${slot}" aria-pressed="${st === "eaten"}">${st === "eaten" ? "Eaten ✓" : st === "prepared" ? "Prepared — mark eaten" : "Mark eaten"}</button><button class="btn ghost small" data-act="swapMeal" data-date="${k}" data-slot="${slot}">Swap</button></div></div>`; }).join("")}
+  ${(() => { const f = C.dayFlow(k, dayPlanFor, RBI); const thaw = f.morning.filter(x => x.active === 0); return `<div class="note info" style="margin-top:8px"><b>Cooking today: about ${f.total} min</b> — morning ${f.minutes.morning}, evening ${f.minutes.evening}, tonight ${f.minutes.night}. No reheating: lunch is eaten cold, dinner is cooked fresh.${thaw.length ? `<br><b>This morning:</b> ${thaw.map(x => esc(x.text)).join("; ")}.` : ""}${f.night.length ? `<br><b>Tonight:</b> ${f.night.map(x => esc(x.text)).join("; ")}.` : ""} <a href="#food" data-act="go" data-to="food" data-sub="prep">Step by step</a></div>`; })()}
   <hr><div class="kv"><span>Calories</span>${meter(tt.kcal, tg.kcal, "meal")}<span>${fmt(tt.kcal)} / ${fmt(tg.kcal)}</span><span>Protein</span>${meter(tt.protein, tg.protein)}<span>${fmt(tt.protein)} / ${tg.protein} g</span></div>
   <div class="row" style="margin-top:8px"><span class="muted" style="font-size:14px">Estimated food cost today ${gbp(tt.cost)} · hands-on cooking ${tt.prep} min</span><span class="sp"></span><label class="row" style="font-size:13px;font-weight:600"><input type="checkbox" data-on="quickMode" ${settings().food.quickMode ? "checked" : ""}> Quick-meal mode</label></div>
   ${settings().food.quickMode ? `<div class="note info" style="margin-top:8px">Quick mode: swaps now only offer meals with ≤ 15 min hands-on time or already batch-cooked portions.</div>` : ""}</div>`;
@@ -2147,7 +2205,7 @@ function todayWeek(k) {
   const s = settings(); const days = [0,1,2,3,4,5,6].map(i => C.addDays(k, i));
   return `<div class="card"><div class="head"><h2>Next 7 days</h2></div><p class="muted" style="font-size:14px">You work every day, so nothing is assumed off. Mark leave, holidays, busy or unavailable days here and the plan adapts.</p><div class="tbl"><table><thead><tr><th>Day</th><th>Diet</th><th>Status</th><th>Work & steps</th><th>Training</th><th class="num">kcal</th><th class="num">Career</th><th>Notes</th></tr></thead><tbody>
   ${days.map(d => { const day = getDay(d); const b = blocksFor(d); const cf = C.conflicts(b).length; const se = sessionFor(d); const cm = C.careerMinutes(b);
-    return `<tr><td>${shortDate(d)}</td><td>${dietBadge(C.dietForDate(d, s.diet.schedule))}</td><td><select data-on="statusSel" data-date="${d}" aria-label="Status for ${shortDate(d)}">${["work","busy","off","leave","unavailable"].map(v => `<option value="${v}" ${dayStatus(d) === v ? "selected" : ""}>${STATUS_LABEL[v]}</option>`).join("")}</select></td><td><small>${daySummary(d).jobs}<br>~${fmt(dayWork(d).steps)} steps</small> <button class="btn ghost small" data-act="editDay" data-date="${d}" aria-label="Edit day">✎</button></td><td>${se ? esc(se.name) : "Recovery"}</td><td class="num">${fmt(dayTargets(d).kcal)}</td><td class="num">${Math.floor(cm / 60)}h ${cm % 60}m</td><td>${s.schedule.prepWeekdays.includes(C.weekday(d)) ? '<span class="badge">Batch cook</span> ' : ""}${cf ? `<span class="badge warn">${cf} overlap(s)</span>` : ""}</td></tr>`; }).join("")}</tbody></table></div>
+    return `<tr><td>${shortDate(d)}</td><td>${dietBadge(C.dietForDate(d, s.diet.schedule))}</td><td><select data-on="statusSel" data-date="${d}" aria-label="Status for ${shortDate(d)}">${["work","busy","off","leave","unavailable"].map(v => `<option value="${v}" ${dayStatus(d) === v ? "selected" : ""}>${STATUS_LABEL[v]}</option>`).join("")}</select></td><td><small>${daySummary(d).jobs}<br>~${fmt(dayWork(d).steps)} steps</small> <button class="btn ghost small" data-act="editDay" data-date="${d}" aria-label="Edit day">✎</button></td><td>${se ? esc(se.name) : "Recovery"}</td><td class="num">${fmt(dayTargets(d).kcal)}</td><td class="num">${Math.floor(cm / 60)}h ${cm % 60}m</td><td>${s.schedule.prepWeekdays.includes(C.weekday(d)) ? '<span class="badge">Ingredient prep</span> ' : ""}${cf ? `<span class="badge warn">${cf} overlap(s)</span>` : ""}</td></tr>`; }).join("")}</tbody></table></div>
   <hr><h3>Mark a date further ahead</h3><div class="row" style="margin-top:6px"><input type="date" id="markDate" style="max-width:180px" aria-label="Date"><select id="markStatus" style="max-width:200px" aria-label="Status"><option value="leave">Leave / holiday</option><option value="unavailable">Unavailable</option><option value="busy">Busy</option><option value="work">Normal workday</option></select><button class="btn" data-act="markDate">Save</button></div>
   ${recs("day").filter(d => d.status && d.status !== "work" && d.date >= k).sort((a, b) => a.date.localeCompare(b.date)).map(d => `<div class="row" style="margin-top:6px"><span class="badge">${esc(d.status)}</span>${shortDate(d.date)}<button class="btn ghost small" data-act="setStatus" data-date="${d.date}" data-v="work">Clear</button></div>`).join("")}</div>`;
 }
@@ -2177,9 +2235,9 @@ function todayTemplates() {
   return weekSetupCard() + `<div class="card" style="margin-top:14px"><div class="head"><h2>Your fixed times</h2></div><div class="fields">
     <label class="f">Wake up<input type="time" value="${s.wake}" data-on="sched" data-f="wake"></label><label class="f">Bedtime<input type="time" value="${s.bed}" data-on="sched" data-f="bed"></label>
     <label class="f">Work starts<input type="time" value="${s.workStart}" data-on="sched" data-f="workStart"></label><label class="f">Work ends<input type="time" value="${s.workEnd}" data-on="sched" data-f="workEnd"></label>
-    <label class="f">Commute each way (min)<input type="number" min="0" max="180" value="${s.commute}" data-on="sched" data-f="commute"></label><label class="f">Batch-cook session (min)<input type="number" min="30" max="150" value="${s.prepMinutes}" data-on="sched" data-f="prepMinutes"></label></div>
+    <label class="f">Commute each way (min)<input type="number" min="0" max="180" value="${s.commute}" data-on="sched" data-f="commute"></label><label class="f">Ingredient prep session (min)<input type="number" min="10" max="90" value="${s.prepMinutes}" data-on="sched" data-f="prepMinutes"></label></div>
     <p class="${sh < 7 ? "note bad" : "muted"}" style="margin-top:10px">Sleep window: ${sh} hours${sh < 7 ? " — below 7 hours. Move bedtime earlier; study time will shrink automatically rather than sleep." : " (target 7–9)."}</p>
-    <p class="muted" style="font-size:14px">Gym days: Mon, Wed, Fri; home session Sat; recovery Tue, Thu, Sun. Batch cooking on ${s.prepWeekdays.map(i => C.DAY_NAMES[i]).join(" and ")} (rest days). When time is short, the plan trims coding first, then learning, then outreach — applications are protected.</p></div>
+    <p class="muted" style="font-size:14px">Gym days: Mon, Wed, Fri; home session Sat; recovery Tue, Thu, Sun. Ingredient prep (about ${s.prepMinutes} min) on ${s.prepWeekdays.map(i => C.DAY_NAMES[i]).join(" and ")}; everything else is cooked fresh each day in about 25–30 minutes. When time is short, the plan trims coding first, then learning, then outreach — applications are protected.</p></div>
   <div class="grid g3" style="margin-top:14px">${show("work", s.trainTime === "morning" ? "Workday (gym before work)" : "Workday (gym after work)")}${show("busy", "Busy day — short version")}${show("off", "Day off / leave")}</div>`;
 }
 
@@ -2597,13 +2655,13 @@ VIEWS.food = () => {
   const t = sub("food", "today"); const s = settings();
   const head = `<div class="top"><div class="grow"><div class="eyebrow">${s.diet.allergiesConfirmed ? "Allergies confirmed" : "Allergies not yet confirmed"} · budget ${gbp(s.food.budget)}/week</div><h1>Food</h1></div>${dietBadge(C.dietForDate(todayKey(), s.diet.schedule))}</div>`;
   const body = t === "week" ? foodWeek() : t === "recipes" ? foodRecipes() : t === "shop" ? foodShop() : t === "prep" ? foodPrep() : t === "log" ? foodLog() : foodToday();
-  return head + tabs("food", [["today", "Today"], ["week", "7-day plan"], ["recipes", "Recipes"], ["shop", "Shopping list"], ["prep", "Meal prep"], ["log", "Food log"]]) + body;
+  return head + tabs("food", [["today", "Today"], ["week", "7-day plan"], ["recipes", "Recipes"], ["shop", "Shopping list"], ["prep", "Prep & cooking"], ["log", "Food log"]]) + body;
 };
 function foodToday() {
   const k = todayKey(); const dp = dayPlanFor(k); const tt = C.dayTotals(dp, RBI, ING, kv("prices")); const tg = dayTargets(k); const df = defrostTonight(k);
   const needIng = {}; SLOTS.forEach(sl => { const r = RBI[dp.slots[sl]]; if (r && r.fresh) r.ing.forEach(([i, q]) => needIng[i] = (needIng[i] || 0) + q / r.portions * (C.CARB_ING.includes(i) ? dp.carb : 1)); });
   return `<div class="grid g2"><div class="stack">${todayMeals(k)}${df.length ? `<div class="card"><h2>Freezer</h2><p>Tonight, move to the fridge: ${df.map(p => `<b>${esc(p.name)}</b> for ${C.DAY_NAMES[C.weekday(p.date)]} ${p.slot}`).join(", ")}.</p></div>` : ""}</div>
-  <div class="stack"><div class="card"><h2>Cook fresh today</h2>${Object.keys(needIng).length ? `<p class="muted" style="font-size:14px">Ingredients for today's freshly cooked items (batch-cooked meals are already in the fridge or freezer):</p><ul class="list">${Object.entries(needIng).map(([i, q]) => `<li><div class="grow">${esc(ING[i].name)}</div><b>${ING[i].unit === "g" || ING[i].unit === "ml" ? Math.round(q) + " " + ING[i].unit : C.round(q, 1) + " " + ING[i].unit}</b></li>`).join("")}</ul>` : `<p class="empty">Everything today is batch-cooked — just reheat until steaming hot.</p>`}</div>
+  <div class="stack"><div class="card"><h2>Cook fresh today <span class="badge fit">≈ ${C.dayFlow(k, dayPlanFor, RBI).total} min</span></h2>${Object.keys(needIng).length ? `<p class="muted" style="font-size:14px">Ingredients for today's freshly cooked items (batch-cooked meals are already in the fridge or freezer):</p><ul class="list">${Object.entries(needIng).map(([i, q]) => `<li><div class="grow">${esc(ING[i].name)}</div><b>${ING[i].unit === "g" || ING[i].unit === "ml" ? Math.round(q) + " " + ING[i].unit : C.round(q, 1) + " " + ING[i].unit}</b></li>`).join("")}</ul>` : `<p class="empty">Nothing to cook today.</p>`}</div>
   <div class="card"><h2>Today in numbers</h2><div class="stats"><div class="stat"><b>${fmt(tt.kcal)}</b><span>kcal (target ${fmt(tg.kcal)})</span></div><div class="stat"><b>${fmt(tt.protein)} g</b><span>protein (target ${tg.protein})</span></div><div class="stat"><b>${gbp(tt.cost)}</b><span>est. food cost</span></div><div class="stat"><b>${tt.prep} min</b><span>hands-on cooking</span></div></div>
   <p class="muted" style="font-size:13px;margin-top:8px">Carbs ${fmt(tt.carbs)} g · fat ${fmt(tt.fat)} g · fibre ${fmt(tt.fibre)} g. Nutrition values are estimates from typical UK label data.</p></div></div></div>`;
 }
@@ -2763,13 +2821,38 @@ ACT.rmExtra = el => { const e = (kv("extraShop") || []).slice(); e.splice(+el.da
 ACT.carryPantry = () => ask("Move leftovers into your pantry?", "Each ingredient's leftover after this week's packs becomes the quantity you already have. Staples you entered stay.", "Update pantry", () => { const shop = weekShop(fWeek()); const p = Object.assign({}, kv("pantry")); shop.rows.forEach(r => { p[r.id] = Math.max(0, r.packs ? r.leftover : (p[r.id] || 0) - r.total); }); setKV("pantry", p); setKV("extraShop", []); toast("Pantry updated"); });
 ACT.csvShop = () => { const shop = weekShop(fWeek()); saveFile("shopping-list-" + fWeek() + ".csv", C.toCSV(shop.rows, [{label: "Category", key: "cat"}, {label: "Ingredient", key: "name"}, {label: "Need", key: "total"}, {label: "Unit", key: "unit"}, {label: "Have", key: "have"}, {label: "To buy", key: "toBuy"}, {label: "Packs", key: "packs"}, {label: "Pack size", key: "packSize"}, {label: "Price per pack (est.)", key: "price"}, {label: "Cost (est.)", key: "cost"}, {label: "Used in", key: "usedBy"}, {label: "Freezable", get: r => r.freezable ? "yes" : "no"}])); };
 
+function prepWindow(k) {
+  const pw = settings().schedule.prepWeekdays.slice().sort(); let s0 = null;
+  for (let b = 0; b < 7; b++) { const d = C.addDays(k, b); if (pw.includes(C.weekday(d))) { s0 = d; break; } }
+  if (!s0) return null; let e = null; for (let b = 1; b <= 7; b++) { const d = C.addDays(s0, b); if (pw.includes(C.weekday(d))) { e = d; break; } }
+  const dates = []; for (let d = C.addDays(s0, 1); d <= (e || C.addDays(s0, 4)); d = C.addDays(d, 1)) dates.push(d);
+  return {date: s0, dates};
+}
 function foodPrep() {
+  const k = S.ui.flowDate || todayKey(); const checks = kv("prepChecks") || {};
+  const win = prepWindow(todayKey()); const ip = win ? C.ingredientPrep(win.dates, dayPlanFor, RBI, ING) : null; const ik = win ? "ip:" + win.date : "";
+  const f = C.dayFlow(k, dayPlanFor, RBI); const fk = "flow:" + k; const fc = checks[fk] || {};
+  const sect = (title, when, list) => list.length ? `<h3 style="margin-top:12px">${title} <span class="muted" style="font-weight:500">· ${f.minutes[when]} min</span></h3>${list.map((x, i) => { const id = when + i; const tm = /dal/i.test(x.name) && when === "evening" ? 18 : /tikka/i.test(x.name) && when === "evening" ? 12 : /egg/i.test(x.name) ? 9 : 0;
+    return `<div class="chk ${fc[id] ? "done" : ""}"><input type="checkbox" data-on="flowCheck" data-key="${fk}" data-id="${id}" ${fc[id] ? "checked" : ""} aria-label="Done"><div><div class="ttl" style="font-weight:600">${esc(x.text)}</div><div class="muted" style="font-size:13px">${x.forDay !== k ? "For " + C.DAY_NAMES[C.weekday(x.forDay)] + " · " : ""}${x.active ? x.active + " min hands-on" : "10 seconds"}${x.cold ? " · eaten cold, no reheating" : ""} · <button class="btn ghost small" style="padding:0" data-act="openRecipe" data-id="${x.recipe}">recipe</button></div></div>${tm ? `<button class="btn small" data-act="timer" data-label="${esc(x.name)}" data-min="${tm}">⏱ ${tm} min</button>` : "<span></span>"}</div>`; }).join("")}` : "";
+  const batch = Object.values(dayPlanFor(k).slots).some(id => RBI[id] && !RBI[id].fresh);
+  return `<div class="note bad" style="margin-bottom:12px"><b>Food safety:</b> keep your lunch roll cold — insulated bag with an ice pack, eat within 4 hours (never leave it in a warm van). Thaw chicken in the fridge, cook it until no pink remains, use a separate board for raw meat and wash up straight after. Chopped onions and dough keep 3–4 days in airtight boxes in the fridge.</div>
+  <div class="grid g2"><div class="card"><div class="head"><h2>Cooking on ${C.DAY_NAMES[C.weekday(k)]}</h2><span class="badge fit">≈ ${f.total} min</span></div>
+  <div class="row" style="margin-bottom:6px"><button class="btn small" data-act="flowDay" data-d="-1">← Previous day</button><b>${shortDate(k)}</b><button class="btn small" data-act="flowDay" data-d="1">Next day →</button>${dietBadge(C.dietForDate(k, settings().diet.schedule))}</div>
+  <p class="muted" style="font-size:13px">Everything is cooked fresh on the day — no batch cooking, nothing to reheat. Times assume your chopped onions and dough are ready from ingredient prep.</p>
+  ${sect("Morning", "morning", f.morning)}${sect("Evening", "evening", f.evening)}${sect("Tonight, for tomorrow", "night", f.night)}</div>
+  <div class="card"><div class="head"><h2>Ingredient prep</h2>${win ? `<span class="badge">${C.DAY_NAMES[C.weekday(win.date)]} · ≈ ${ip.minutes} min</span>` : ""}</div>
+  ${win ? `<p class="muted" style="font-size:13px">On ${prettyDate(win.date)}: get ingredients ready for ${win.dates.length} days (${win.dates.map(d => C.DAY_SHORT[C.weekday(d)]).join(", ")}). Not cooking — just chopping, dough and marinating so each day stays under 30 minutes.</p>
+  ${ip.tasks.map(t => `<div class="chk ${(checks[ik] || {})[t.id] ? "done" : ""}"><input type="checkbox" data-on="prepCheck" data-key="${ik}" data-id="${t.id}" ${(checks[ik] || {})[t.id] ? "checked" : ""} aria-label="Done"><div><div class="ttl" style="font-weight:600">${esc(t.title)}</div><div style="font-size:14px">${esc(t.detail)}</div></div><span class="muted" style="font-size:13px">${t.mins} min</span></div>`).join("")}` : `<p class="empty">Set ingredient-prep days in Settings.</p>`}</div></div>
+  ${batch ? `<h2 style="margin:18px 0 8px">Batch-cooked items you swapped in</h2>${batchPrepSection()}` : ""}`;
+}
+ACT.flowDay = el => { S.ui.flowDate = C.addDays(S.ui.flowDate || todayKey(), +el.dataset.d); render(); };
+ON.flowCheck = el => { const o = JSON.parse(JSON.stringify(kv("prepChecks") || {})); o[el.dataset.key] = o[el.dataset.key] || {}; o[el.dataset.key][el.dataset.id] = el.checked; setKV("prepChecks", o); render(); };
+function batchPrepSection() {
   const ws = fWeek(); const plans = weekPlans(C.addDays(ws, -7)).concat(weekPlans(ws), weekPlans(C.addDays(ws, 7)));
   const all = C.prepSessions(plans, RBI, ING, settings().schedule.prepWeekdays); const sessions = all.filter(s => s.cook >= C.addDays(ws, -1) && s.cook <= C.addDays(ws, 6));
   const checks = kv("prepChecks") || {};
   const fresh = weekPlans(ws).map(dp => ({dp, items: SLOTS.map(sl => RBI[dp.slots[sl]]).filter(r => r && r.fresh && r.cook > 0)}));
-  return `<div class="row" style="margin-bottom:12px"><button class="btn small" data-act="foodWeek" data-d="-7">← Previous</button><b>Week of ${shortDate(ws)}</b><button class="btn small" data-act="foodWeek" data-d="7">Next →</button><span class="sp"></span><button class="btn small" data-act="print">Print labels</button></div>
-  <div class="note bad" style="margin-bottom:12px"><b>Food safety:</b> cool cooked food quickly and refrigerate within 1–2 hours; cooked rice within 1 hour, kept in the fridge no more than 1 day. Eat most fridge leftovers within 2 days. Freeze anything for later, defrost in the fridge overnight, reheat once until steaming hot throughout. Keep raw meat on the bottom shelf, away from cooked food and VEG containers.</div>
+  return `<div class="note" style="margin-bottom:12px;display:none"><b>Food safety:</b> cool cooked food quickly and refrigerate within 1–2 hours; cooked rice within 1 hour, kept in the fridge no more than 1 day. Eat most fridge leftovers within 2 days. Freeze anything for later, defrost in the fridge overnight, reheat once until steaming hot throughout. Keep raw meat on the bottom shelf, away from cooked food and VEG containers.</div>
   ${sessions.length ? sessions.map(se => { const key = se.cook; const ck = checks[key] || {}; const mins = C.prepMinutes(se, RBI); const doneN = se.steps.filter(s => ck[s.id]).length;
     const fridge = se.portions.filter(p => p.store === "fridge").sort((a, b) => a.date.localeCompare(b.date)); const freezer = se.portions.filter(p => p.store === "freezer");
     return `<div class="card" style="margin-bottom:14px"><div class="head"><h2>Batch session · ${prettyDate(se.cook)}</h2><span class="badge fit">≈ ${mins} min</span><span class="badge">${doneN}/${se.steps.length} steps</span></div>
@@ -3317,6 +3400,14 @@ function pwaCard() {
     if (!ss.profile.goal) ss.profile.goal = ss.profile.deficitKcal === 800 ? "standard" : "custom";
     S.kv.meta = Object.assign({}, S.kv.meta, {mealVersion: 6}); ["settings", "meta"].forEach(k => Store.putKV(k, S.kv[k])); S.migratedGoals = true;
   }
+  // v8: fresh daily cooking — no batch cooking, no reheating; cold lunch rolls; short ingredient prep
+  if (!first && ((S.kv.meta || {}).mealVersion || 1) < 8) {
+    const today = todayKey();
+    S.kv.planTemplate = JSON.parse(JSON.stringify(DEFAULT_PLAN));
+    const o = Object.assign({}, S.kv.planOverrides || {}); Object.keys(o).forEach(k => { if (k >= today) delete o[k]; }); S.kv.planOverrides = o;
+    if (!ss.schedule.prepMinutes || ss.schedule.prepMinutes > 45) ss.schedule.prepMinutes = 30;
+    S.kv.meta = Object.assign({}, S.kv.meta, {mealVersion: 8}); ["planTemplate", "planOverrides", "settings", "meta"].forEach(k => Store.putKV(k, S.kv[k])); S.migratedFresh = true;
+  }
   // v7: plan start date, weekly working pattern, workout time
   if (!ss.training.startDate) { ss.training.startDate = first ? todayKey() : (ss.career.startDate || todayKey()); Store.putKV("settings", ss); }
   if (!ss.schedule.workdays) ss.schedule.workdays = [true, true, true, true, true, true, true];
@@ -3326,6 +3417,7 @@ function pwaCard() {
   S.view = viewFromHash(location.hash) || "today"; render();
   document.documentElement.dataset.ready = "1";
   if (first) toast("Welcome — your plan is set up from your profile. Data stays on this device.");
+  else if (S.migratedFresh) toast("Meals switched to fresh daily cooking (~25 min a day), cold lunch rolls, no reheating.");
   else if (S.migratedGoals) toast("New: goal modes (incl. aggressive fat loss) in Settings, and a muscle + abs training programme.");
   else if (S.migratedSteps) toast("Updated for ~15,000 steps a day: target ≈2,500 kcal with an 800 kcal deficit.");
   else if (S.migratedDeficit) toast("Updated: 800 kcal deficit (≈2,300 kcal/day), portions trimmed, protein kept high.");
